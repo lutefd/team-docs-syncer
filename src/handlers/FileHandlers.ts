@@ -327,7 +327,10 @@ export class FileHandler {
 				return;
 			}
 
-			const relativePath = path.relative(teamDocsFullPath, file.path);
+			const relativePath = path.relative(
+				this.plugin.settings.teamDocsPath,
+				file.path
+			);
 
 			await this.plugin.gitService.gitCommand(
 				teamDocsFullPath,

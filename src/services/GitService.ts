@@ -131,7 +131,11 @@ export class GitService {
 	async restoreFileFromGit(filePath: string) {
 		const teamDocsPath = await this.getTeamDocsPath();
 		if (!teamDocsPath) return;
-		const relativePath = path.relative(teamDocsPath, filePath);
+
+		const relativePath = path.relative(
+			this.plugin.settings.teamDocsPath,
+			filePath
+		);
 		try {
 			await this.gitCommand(teamDocsPath, `checkout HEAD -- "${relativePath}"`);
 		} catch (error) {
