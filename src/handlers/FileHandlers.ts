@@ -89,52 +89,62 @@ export class FileHandler {
 				this.autoCommitTimeouts.delete(file.path);
 			}
 
-			await this.plugin.reservationManager.syncReservationsFromGit();
+			const online = await this.plugin.gitService.isRemoteReachable();
+
+			if (online) {
+				await this.plugin.reservationManager.syncReservationsFromGit();
+			}
 
 			const reservation = this.plugin.reservationManager.getFileReservation(
 				file.path
 			);
 
-			if (
-				reservation &&
-				reservation.userName !== this.plugin.settings.userName
-			) {
-				await this.plugin.gitService.restoreFileFromGit(file.path);
-				new Notice(
-					`File reserved by ${reservation.userName}. Changes reverted. Sync and try reserving first.`
-				);
-				return;
-			}
-
-			if (!reservation) {
-				console.log(
-					`No reservation found for ${file.path}, attempting to reserve...`
-				);
-				const reserved = await this.plugin.reservationManager.reserveFile(file);
-				if (!reserved) {
+			if (online) {
+				if (
+					reservation &&
+					reservation.userName !== this.plugin.settings.userName
+				) {
 					await this.plugin.gitService.restoreFileFromGit(file.path);
-					new Notice("Failed to reserve file. Changes reverted.");
+					new Notice(
+						`File reserved by ${reservation.userName}. Changes reverted. Sync and try reserving first.`
+					);
 					return;
 				}
-			} else if (reservation.userName === this.plugin.settings.userName) {
-				const timeRemaining = reservation.expiresAt - Date.now();
-				if (timeRemaining <= this.EXTEND_THRESHOLD) {
+			}
+
+			if (online) {
+				if (!reservation) {
 					console.log(
-						`Reservation for ${file.path} expires soon (${Math.round(
-							timeRemaining / 60000
-						)}min), extending...`
+						`No reservation found for ${file.path}, attempting to reserve...`
 					);
-					const extended =
-						await this.plugin.reservationManager.extendReservation(file);
-					if (!extended) {
-						console.warn(`Failed to extend reservation for ${file.path}`);
+					const reserved = await this.plugin.reservationManager.reserveFile(
+						file
+					);
+					if (!reserved) {
+						await this.plugin.gitService.restoreFileFromGit(file.path);
+						new Notice("Failed to reserve file. Changes reverted.");
+						return;
 					}
-				} else {
-					console.log(
-						`Reservation for ${file.path} still valid for ${Math.round(
-							timeRemaining / 60000
-						)} minutes, no extension needed`
-					);
+				} else if (reservation.userName === this.plugin.settings.userName) {
+					const timeRemaining = reservation.expiresAt - Date.now();
+					if (timeRemaining <= this.EXTEND_THRESHOLD) {
+						console.log(
+							`Reservation for ${file.path} expires soon (${Math.round(
+								timeRemaining / 60000
+							)}min), extending...`
+						);
+						const extended =
+							await this.plugin.reservationManager.extendReservation(file);
+						if (!extended) {
+							console.warn(`Failed to extend reservation for ${file.path}`);
+						}
+					} else {
+						console.log(
+							`Reservation for ${file.path} still valid for ${Math.round(
+								timeRemaining / 60000
+							)} minutes, no extension needed`
+						);
+					}
 				}
 			}
 
@@ -281,15 +291,21 @@ export class FileHandler {
 			file.path
 		);
 
-		if (reservation && reservation.userName !== this.plugin.settings.userName) {
-			new Notice(
-				`Warning: This file is reserved by ${reservation.userName}. Changes may be reverted on save.`
-			);
-			this.plugin.uiManager.enforceReadView(file);
-			this.warnedFiles.add(file.path);
-		}
+		void (async () => {
+			const online = await this.plugin.gitService.isRemoteReachable();
+			if (
+				online &&
+				reservation &&
+				reservation.userName !== this.plugin.settings.userName
+			) {
+				new Notice(
+					`Warning: This file is reserved by ${reservation.userName}. Changes may be reverted on save.`
+				);
+				this.plugin.uiManager.enforceReadView(file);
+				this.warnedFiles.add(file.path);
+			}
+		})();
 
-		// If it's our reservation and it's close to expiring, extend proactively while editing
 		if (reservation && reservation.userName === this.plugin.settings.userName) {
 			const timeRemaining = reservation.expiresAt - Date.now();
 			if (timeRemaining <= this.EXTEND_THRESHOLD) {
