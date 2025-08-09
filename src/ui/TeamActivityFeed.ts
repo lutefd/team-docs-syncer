@@ -22,7 +22,7 @@ export interface ActivityItem {
 export class TeamActivityFeedView extends ItemView {
 	private plugin: TeamDocsPlugin;
 	private activities: ActivityItem[] = [];
-	private refreshInterval: NodeJS.Timer | null = null;
+	private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TeamDocsPlugin) {
 		super(leaf);

@@ -23,7 +23,7 @@ export default class TeamDocsPlugin extends Plugin {
 	fileHandler: FileHandler;
 	commandManager: CommandManager;
 	uiManager: UIManager;
-	private syncInterval: NodeJS.Timer | null = null;
+	private syncInterval: ReturnType<typeof setInterval> | null = null;
 
 	async onload() {
 		await this.loadSettings();
