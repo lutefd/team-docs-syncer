@@ -37,6 +37,7 @@ export function createMockPlugin(app: App) {
 		restoreFileFromGit: jest.fn(),
 		getTeamDocsPath: jest.fn(async () => "/abs/teamdocs"),
 		gitCommand: jest.fn(async () => ({ stdout: "", stderr: "" })),
+		isRemoteReachable: jest.fn(async () => true),
 	};
 
 	const reservationManager = {
