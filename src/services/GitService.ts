@@ -48,6 +48,21 @@ export class GitService {
 	}
 
 	/**
+	 * Quickly checks if the remote is reachable (used to decide online/offline behavior)
+	 * Returns false on any failure (e.g., no network, remote unavailable)
+	 */
+	async isRemoteReachable(timeoutMs: number = 3000): Promise<boolean> {
+		try {
+			const cwd = await this.getTeamDocsPath();
+			if (!cwd) return false;
+			await execAsync("git ls-remote --heads origin", { cwd, timeout: timeoutMs });
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
 	 * Synchronizes team docs with remote repository
 	 */
 	async syncTeamDocs() {
