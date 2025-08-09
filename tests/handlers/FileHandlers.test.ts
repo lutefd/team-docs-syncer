@@ -49,8 +49,10 @@ describe("FileHandler", () => {
 		(plugin.reservationManager.getFileReservation as jest.Mock).mockReturnValue(
 			{ userName: "other" }
 		);
+		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(true);
 
 		(app as any).vault.emit("modify", file);
+		await Promise.resolve();
 		await Promise.resolve();
 		jest.runOnlyPendingTimers();
 
@@ -86,19 +88,55 @@ describe("FileHandler", () => {
 		);
 	});
 
-	test("onEditorChange warns and enforces read view when reserved by other", () => {
+	test("onEditorChange warns and enforces read view when reserved by other (online)", async () => {
 		const tFile = new (TFile as any)("Team/Docs/locked.md") as TFile;
 		(app as any).workspace.getActiveFile = jest.fn(() => tFile);
 		(plugin.reservationManager.getFileReservation as jest.Mock).mockReturnValue(
 			{ userName: "other" }
 		);
+		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(true);
 
 		(app as any).workspace.emit(
 			"editor-change",
 			{} as any,
 			{ file: tFile } as any
 		);
-
+		await Promise.resolve();
 		expect(plugin.uiManager.enforceReadView).toHaveBeenCalledWith(tFile);
+	});
+
+	test("onEditorChange does not enforce read view when offline", async () => {
+		const tFile = new (TFile as any)("Team/Docs/locked.md") as TFile;
+		(app as any).workspace.getActiveFile = jest.fn(() => tFile);
+		(plugin.reservationManager.getFileReservation as jest.Mock).mockReturnValue(
+			{ userName: "other" }
+		);
+		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(false);
+
+		(app as any).workspace.emit(
+			"editor-change",
+			{} as any,
+			{ file: tFile } as any
+		);
+		await Promise.resolve();
+		expect(plugin.uiManager.enforceReadView).not.toHaveBeenCalled();
+	});
+
+	test("onFileModified offline does not revert or attempt reservation", async () => {
+		const file = new (TFile as any)("Team/Docs/offline.md") as TFile;
+		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(false);
+		(plugin.reservationManager.getFileReservation as jest.Mock).mockReturnValue(
+			null
+		);
+
+		(app as any).vault.emit("modify", file);
+		await Promise.resolve();
+		jest.runOnlyPendingTimers();
+
+		expect(
+			plugin.reservationManager.syncReservationsFromGit
+		).not.toHaveBeenCalled();
+		expect(plugin.reservationManager.reserveFile).not.toHaveBeenCalled();
+		expect(plugin.gitService.restoreFileFromGit).not.toHaveBeenCalled();
 	});
 });
