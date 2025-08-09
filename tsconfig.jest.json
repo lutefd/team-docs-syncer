@@ -1,0 +1,15 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"module": "commonjs",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"types": ["jest"],
+		"baseUrl": ".",
+		"paths": {
+			"obsidian": ["tests/mocks/obsidian.ts"],
+			"electron": ["tests/mocks/stub.ts"]
+		}
+	},
+	"include": ["tests", "src"]
+}
