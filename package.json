@@ -1,6 +1,6 @@
 {
 	"name": "team-docs-git-sync",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "Collaborative team documentation with Git sync and conflict resolution",
 	"main": "main.js",
 	"scripts": {
