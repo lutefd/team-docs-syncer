@@ -362,31 +362,52 @@ export class ChatbotView extends ItemView {
 				new Notice("File not found");
 				return;
 			}
-			if (!path.startsWith(this.plugin.settings.teamDocsPath + "/")) {
-				new Notice("Edit blocked: outside team docs folder.");
-				return;
-			}
 			const content = await this.app.vault.read(file);
 
 			const sys: ModelMessage = {
 				role: "system",
 				content: `Produce a revised full Markdown for the selected file. Keep structure intact; only improve per the last user request. Output ONLY the Markdown content, no code fences.`,
 			};
+			const session = this.plugin.chatSessionService.getActive();
+			if (!session) return;
 			const user: ModelMessage = {
 				role: "user",
 				content: `Original content of ${path}:\n\n${content}\n\nRevise per our discussion.`,
 			};
 
-			const session = this.plugin.chatSessionService.getActive();
-			if (!session) return;
-			const res = await this.plugin.aiService!.chat(
+			const row = this.messagesEl.createDiv({ cls: `msg msg-assistant` });
+			row.createEl("div", { text: "Assistant", cls: "msg-author" });
+			const contentEl = row.createEl("div", { cls: "msg-content" });
+			let fullText = "";
+			const result = await this.plugin.aiService!.streamChat(
 				[sys, ...session.messages, user],
-				"write"
+				"write",
+				(delta) => {
+					fullText += delta;
+					contentEl.textContent = fullText;
+					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+				}
 			);
-			const revised = res.text;
+			if (!fullText && result.text) {
+				fullText = result.text;
+				contentEl.textContent = fullText;
+			}
+			session.messages.push({ role: "assistant", content: fullText });
+			try {
+				contentEl.empty();
+				await MarkdownRenderer.render(
+					this.app,
+					fullText,
+					contentEl,
+					this.app.workspace.getActiveFile()?.path || "/",
+					this
+				);
+			} catch {
+				contentEl.textContent = fullText;
+			}
 
 			const confirmed = await new Promise<boolean>((resolve) => {
-				new DiffModal(this.app, file.path, content, revised, (ok) =>
+				new DiffModal(this.app, file.path, content, fullText, (ok) =>
 					resolve(ok)
 				).open();
 			});
@@ -400,13 +421,10 @@ export class ChatbotView extends ItemView {
 				new Notice("Could not reserve file; edit aborted.");
 				return;
 			}
-
-			await this.app.vault.modify(file, revised);
-			new Notice(
-				"Edit applied. It will be auto-committed by the plugin workflow."
-			);
+			await this.app.vault.modify(file, fullText);
+			new Notice("Edit applied.");
 		} catch (e: any) {
-			new Notice(`Apply error: ${e?.message || e}`);
+			new Notice(`Generate & Apply error: ${e?.message || e}`);
 		}
 	}
 
