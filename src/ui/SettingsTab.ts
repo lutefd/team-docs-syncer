@@ -130,5 +130,61 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		containerEl.createEl("h3", { text: "AI (OpenAI)" });
+
+		new Setting(containerEl)
+			.setName("OpenAI API Key")
+			.setDesc("Your OpenAI API key. Stored locally in this plugin's settings.")
+			.addText((text) =>
+				text
+					.setPlaceholder("sk-...")
+					.setValue(this.plugin.settings.openaiApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.openaiApiKey = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Model")
+			.setDesc("OpenAI chat model to use (e.g., gpt-5-mini)")
+			.addText((text) =>
+				text
+					.setPlaceholder("gpt-5-mini")
+					.setValue(this.plugin.settings.openaiModel)
+					.onChange(async (value) => {
+						this.plugin.settings.openaiModel = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Temperature")
+			.setDesc("Controls creativity. Lower is more focused (0-2).")
+			.addText((text) =>
+				text
+					.setPlaceholder("0.2")
+					.setValue(String(this.plugin.settings.openaiTemperature))
+					.onChange(async (value) => {
+						const n = Number(value);
+						this.plugin.settings.openaiTemperature = isNaN(n) ? 0.2 : n;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Max Tokens")
+			.setDesc("Response token cap for the assistant.")
+			.addText((text) =>
+				text
+					.setPlaceholder("4080")
+					.setValue(String(this.plugin.settings.openaiMaxTokens))
+					.onChange(async (value) => {
+						const n = parseInt(value, 10);
+						this.plugin.settings.openaiMaxTokens = isNaN(n) ? 4080 : n;
+						await this.plugin.saveSettings();
+					})
+			);
 	}
 }
