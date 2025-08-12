@@ -15,6 +15,49 @@ export class GitService {
 	constructor(private app: App, private plugin: TeamDocsPlugin) {}
 
 	/**
+	 * Generic retry with exponential backoff and jitter for transient failures
+	 */
+	private async withRetry<T>(
+		task: () => Promise<T>,
+		opts: { retries?: number; baseDelayMs?: number; maxDelayMs?: number } = {}
+	): Promise<T> {
+		const retries = opts.retries ?? 2;
+		const base = opts.baseDelayMs ?? 400;
+		const max = opts.maxDelayMs ?? 3000;
+		let lastErr: any;
+		for (let attempt = 0; attempt <= retries; attempt++) {
+			try {
+				return await task();
+			} catch (err: any) {
+				lastErr = err;
+				const msg = String(err?.message ?? err ?? "");
+				const transient =
+					/timed out|timeout|temporarily unavailable|network|TLS|EOF|remote hung up|could not resolve host/i.test(
+						msg
+					);
+				if (attempt === retries || !transient) {
+					throw err;
+				}
+				const jitter = Math.random() * 0.2 + 0.9; // 0.9-1.1
+				const delay = Math.min(max, base * Math.pow(2, attempt)) * jitter;
+				await new Promise((res) => setTimeout(res, delay));
+			}
+		}
+		throw lastErr;
+	}
+
+	/** Run a git command with retries for transient errors */
+	async gitCommandRetry(
+		cwd: string,
+		command: string,
+		opts: { retries?: number } = {}
+	): Promise<{ stdout: string; stderr: string }> {
+		return this.withRetry(() => this.gitCommand(cwd, command), {
+			retries: opts.retries ?? 2,
+		});
+	}
+
+	/**
 	 * Gets the full filesystem path to the team docs directory
 	 */
 	async getTeamDocsPath(): Promise<string | null> {
@@ -52,10 +95,17 @@ export class GitService {
 	 * Returns false on any failure (e.g., no network, remote unavailable)
 	 */
 	async isRemoteReachable(timeoutMs: number = 3000): Promise<boolean> {
+		const cwd = await this.getTeamDocsPath();
+		if (!cwd) return false;
 		try {
-			const cwd = await this.getTeamDocsPath();
-			if (!cwd) return false;
-			await execAsync("git ls-remote --heads origin", { cwd, timeout: timeoutMs });
+			await this.withRetry(
+				() =>
+					execAsync("git ls-remote --heads origin", {
+						cwd,
+						timeout: timeoutMs,
+					}),
+				{ retries: 2 }
+			);
 			return true;
 		} catch {
 			return false;
@@ -72,10 +122,10 @@ export class GitService {
 		try {
 			this.plugin.statusIndicator.setSyncing();
 
-			await this.gitCommand(teamDocsPath, "fetch origin");
+			await this.gitCommandRetry(teamDocsPath, "fetch origin");
 
 			try {
-				await this.gitCommand(teamDocsPath, "pull origin main");
+				await this.gitCommandRetry(teamDocsPath, "pull origin main");
 			} catch (pullError) {
 				if (
 					pullError.message.includes("would be overwritten by merge") ||
@@ -128,7 +178,7 @@ export class GitService {
 		try {
 			new Notice("Force pulling latest changes...");
 			this.plugin.statusIndicator.setSyncing();
-			await this.gitCommand(teamDocsPath, "fetch origin");
+			await this.gitCommandRetry(teamDocsPath, "fetch origin");
 			await this.gitCommand(teamDocsPath, "reset --hard origin/main");
 			this.plugin.statusIndicator.setSynced();
 			new Notice("Force pull completed!");
@@ -270,7 +320,7 @@ export class GitService {
 				throw new Error("Push aborted: Conflicts with remote reservations");
 			}
 
-			await this.gitCommand(repoPath, "push origin main");
+			await this.gitCommandRetry(repoPath, "push origin main");
 		} catch (error) {
 			if (error.message.includes("nothing to commit")) {
 				return;
