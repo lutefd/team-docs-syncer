@@ -1,6 +1,7 @@
 import { App, Notice, TFile, MarkdownView } from "obsidian";
 import TeamDocsPlugin from "../../main";
 import { ACTIVITY_FEED_VIEW } from "../ui/TeamActivityFeed";
+import { CHATBOT_VIEW } from "../ui/ChatbotView";
 import { ConfirmationModal } from "../ui/ConfirmationModal";
 
 /**
@@ -8,6 +9,27 @@ import { ConfirmationModal } from "../ui/ConfirmationModal";
  */
 export class UIManager {
 	constructor(private app: App, private plugin: TeamDocsPlugin) {}
+
+	/**
+	 * Opens the team docs chatbot view
+	 */
+	openChatbot(): void {
+		const existingLeaf = this.app.workspace.getLeavesOfType(CHATBOT_VIEW)[0];
+		if (existingLeaf) {
+			this.app.workspace.revealLeaf(existingLeaf);
+			return;
+		}
+
+		this.app.workspace.detachLeavesOfType(CHATBOT_VIEW);
+		const leaf = this.app.workspace.getRightLeaf(false);
+		if (leaf) {
+			leaf.setViewState({
+				type: CHATBOT_VIEW,
+				active: true,
+			});
+			this.app.workspace.revealLeaf(leaf);
+		}
+	}
 
 	/**
 	 * Opens the team activity feed view

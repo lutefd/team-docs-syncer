@@ -23,6 +23,10 @@ export class CommandManager {
 		this.plugin.addRibbonIcon("users", "Open Team Activity Feed", () => {
 			this.plugin.uiManager.openActivityFeed();
 		});
+
+		this.plugin.addRibbonIcon("bot", "Open Team Docs Chatbot", () => {
+			this.plugin.uiManager.openChatbot();
+		});
 	}
 
 	private addCommands() {
@@ -87,6 +91,14 @@ export class CommandManager {
 			name: "Open Team Activity Feed",
 			callback: () => {
 				this.plugin.uiManager.openActivityFeed();
+			},
+		});
+
+		this.plugin.addCommand({
+			id: "open-team-docs-chatbot",
+			name: "Open Team Docs Chatbot",
+			callback: () => {
+				this.plugin.uiManager.openChatbot();
 			},
 		});
 	}
