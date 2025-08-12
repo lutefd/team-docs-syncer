@@ -11,6 +11,10 @@ import {
 	ACTIVITY_FEED_VIEW,
 	TeamActivityFeedView,
 } from "./src/ui/TeamActivityFeed";
+import { AiService } from "./src/services/AiService";
+import { MarkdownIndexService } from "./src/services/MarkdownIndexService";
+import { ChatSessionService } from "./src/services/ChatSessionService";
+import { CHATBOT_VIEW, ChatbotView } from "./src/ui/ChatbotView";
 
 /**
  * Main plugin class for Team Docs Git Sync functionality
@@ -23,6 +27,9 @@ export default class TeamDocsPlugin extends Plugin {
 	fileHandler: FileHandler;
 	commandManager: CommandManager;
 	uiManager: UIManager;
+	aiService: AiService;
+	markdownIndexService: MarkdownIndexService;
+	chatSessionService: ChatSessionService;
 	private syncInterval: ReturnType<typeof setInterval> | null = null;
 
 	async onload() {
@@ -74,6 +81,10 @@ export default class TeamDocsPlugin extends Plugin {
 		this.commandManager = new CommandManager(this.app, this);
 		this.uiManager = new UIManager(this.app, this);
 
+		this.aiService = new AiService(this);
+		this.markdownIndexService = new MarkdownIndexService(this.app, this);
+		this.chatSessionService = new ChatSessionService();
+
 		this.addChild(this.reservationManager);
 		this.addChild(this.statusIndicator);
 	}
@@ -83,6 +94,8 @@ export default class TeamDocsPlugin extends Plugin {
 			ACTIVITY_FEED_VIEW,
 			(leaf) => new TeamActivityFeedView(leaf, this)
 		);
+
+		this.registerView(CHATBOT_VIEW, (leaf) => new ChatbotView(leaf, this));
 	}
 
 	private setupCommands() {
