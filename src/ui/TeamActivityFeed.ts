@@ -60,7 +60,7 @@ export class TeamActivityFeedView extends ItemView {
 
 		this.refreshInterval = setInterval(() => {
 			this.refreshActivities();
-		}, 2 * 60 * 1000);
+		}, 30 * 1000);
 
 		await this.refreshActivities();
 	}
