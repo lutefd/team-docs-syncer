@@ -274,6 +274,10 @@ export class EditReservationManager extends Component {
 
 		await this.plugin.gitService.gitCommand(
 			teamDocsPath,
+			`add -A`
+		);
+		await this.plugin.gitService.gitCommandRetry(
+			teamDocsPath,
 			`commit --allow-empty -m "${message}"`
 		);
 	}
@@ -285,7 +289,10 @@ export class EditReservationManager extends Component {
 		const teamDocsPath = await this.plugin.gitService.getTeamDocsPath();
 		if (!teamDocsPath) throw new Error("Team docs path not found");
 
-		await this.plugin.gitService.gitCommand(teamDocsPath, "push origin main");
+		await this.plugin.gitService.gitCommandRetry(
+			teamDocsPath,
+			"push origin main"
+		);
 	}
 
 	/**
@@ -339,23 +346,14 @@ export class EditReservationManager extends Component {
 			const teamDocsPath = await this.plugin.gitService.getTeamDocsPath();
 			if (!teamDocsPath) return;
 
-			await this.plugin.gitService.gitCommand(teamDocsPath, "fetch origin");
-
-			try {
-				await this.plugin.gitService.gitCommand(
-					teamDocsPath,
-					"merge origin/main --no-commit --no-ff"
-				);
-			} catch (error) {
-				console.log(
-					"Merge failed, continuing with current state:",
-					error.message
-				);
-			}
+			await this.plugin.gitService.gitCommandRetry(
+				teamDocsPath,
+				"fetch origin"
+			);
 
 			const { stdout } = await this.plugin.gitService.gitCommand(
 				teamDocsPath,
-				"log --oneline -50"
+				"log origin/main --oneline -50"
 			);
 
 			const oldReservations = new Map(this.reservations);
