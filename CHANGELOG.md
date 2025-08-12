@@ -8,6 +8,19 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [1.2.1] - 2025-08-12
+
+### Changed
+
+- Streamed AI response generation for file edits in write mode, displaying progress in the chat interface.
+- Removed redundant path check in edit application (assumed handled upstream).
+- Simplified success notice for applied edits.
+- Updated error notice text for generate & apply failures.
+
+### Fixed
+
+- Ensured streamed edit responses are properly rendered as Markdown and handled empty responses via fallback.
+
 ## [1.2.0] - 2025-08-12
 
 ### Added
@@ -28,7 +41,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Bumped version to `1.2.0` in `manifest.json`, `package.json`, and `version.json`.
 - Updated `.gitignore` to include `dist` and `.DS_Store`.
 - Enhanced file handling in `FileHandlers.ts` with additional reservation syncs before reverting changes.
-- Added chatbot view registration in `main.ts`.
+- Registered chatbot view in `main.ts`.
 - Improved command manager to include open chatbot command.
 - Updated reservation manager with `git add -A` before commits and retries for push/fetch.
 - Changed activity feed refresh interval to 30 seconds in `TeamActivityFeed.ts`.
@@ -110,7 +123,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Initial setup (`chore: initial setup`)
 - Export stub properly to build (`chore: export stub properly to build`)
 
-[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.0
 [1.1.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.1
 [1.1.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.0
