@@ -8,6 +8,38 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [1.2.0] - 2025-08-12
+
+### Added
+
+- AI integration with OpenAI for chatbot functionality, including chat and write modes.
+- New services: `AiService` for handling AI interactions, `MarkdownIndexService` for indexing and searching Markdown files, `ChatSessionService` for managing chat sessions.
+- New UI components: `ChatbotView` for the main chatbot interface, `ChatSessionsModal` for session management, `DiffModal` for reviewing changes, `EditTargetModal` for selecting edit targets.
+- New tools in `AiTools.ts` for searching docs, reading docs, proposing edits, and creating docs.
+- OpenAI settings: API key, model, temperature, and max tokens in `SettingsTab.ts`.
+- Ribbon icon and command for opening the Team Docs Chatbot.
+- Streaming support for AI responses in chatbot.
+- Sources panel in chatbot to display referenced files.
+- Proposal review and application for write mode edits, with reservation checks.
+- Retry logic with exponential backoff for git commands in `GitService.ts` to handle transient failures.
+
+### Changed
+
+- Bumped version to `1.2.0` in `manifest.json`, `package.json`, and `version.json`.
+- Updated `.gitignore` to include `dist` and `.DS_Store`.
+- Enhanced file handling in `FileHandlers.ts` with additional reservation syncs before reverting changes.
+- Added chatbot view registration in `main.ts`.
+- Improved command manager to include open chatbot command.
+- Updated reservation manager with `git add -A` before commits and retries for push/fetch.
+- Changed activity feed refresh interval to 30 seconds in `TeamActivityFeed.ts`.
+- Extended UIManager with `openChatbot` method.
+- Added dependencies: `@ai-sdk/openai`, `ai`, `zod` in `package.json`.
+- Updated styles in `styles.css` for chatbot UI elements.
+
+### Fixed
+
+- Improved reliability of reservation syncing with retries in `EditReservationManager.ts`.
+
 ## [1.1.1] - 2025-08-09
 
 ### Fixed
@@ -78,7 +110,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Initial setup (`chore: initial setup`)
 - Export stub properly to build (`chore: export stub properly to build`)
 
-[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.0
 [1.1.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.1
 [1.1.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.0
 [1.0.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.0.0
