@@ -104,11 +104,17 @@ export class FileHandler {
 					reservation &&
 					reservation.userName !== this.plugin.settings.userName
 				) {
-					await this.plugin.gitService.restoreFileFromGit(file.path);
-					new Notice(
-						`File reserved by ${reservation.userName}. Changes reverted. Sync and try reserving first.`
+					await this.plugin.reservationManager.syncReservationsFromGit();
+					const latest = this.plugin.reservationManager.getFileReservation(
+						file.path
 					);
-					return;
+					if (latest && latest.userName !== this.plugin.settings.userName) {
+						await this.plugin.gitService.restoreFileFromGit(file.path);
+						new Notice(
+							`File reserved by ${latest.userName}. Changes reverted. Sync and try reserving first.`
+						);
+						return;
+					}
 				}
 			}
 
@@ -117,9 +123,11 @@ export class FileHandler {
 					console.log(
 						`No reservation found for ${file.path}, attempting to reserve...`
 					);
-					const reserved = await this.plugin.reservationManager.reserveFile(
-						file
-					);
+					let reserved = await this.plugin.reservationManager.reserveFile(file);
+					if (!reserved) {
+						await this.plugin.reservationManager.syncReservationsFromGit();
+						reserved = await this.plugin.reservationManager.reserveFile(file);
+					}
 					if (!reserved) {
 						await this.plugin.gitService.restoreFileFromGit(file.path);
 						new Notice("Failed to reserve file. Changes reverted.");
