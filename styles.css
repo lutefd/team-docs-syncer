@@ -249,3 +249,134 @@
 .file-reservation-indicator.own-reservation:hover {
 	opacity: 0.8;
 }
+
+/* Chatbot View */
+.team-chatbot-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.chatbot-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.chatbot-header h3 {
+	margin: 0;
+	color: var(--text-accent);
+}
+
+.chatbot-mode button {
+	margin-left: 6px;
+	padding: 4px 8px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.chatbot-mode .is-active {
+	background: var(--background-modifier-hover);
+	color: var(--text-accent);
+}
+
+.chatbot-notice {
+	padding: 8px 16px;
+	font-size: 12px;
+	color: var(--text-muted);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.chatbot-notice .warning {
+	color: var(--text-warning);
+}
+
+.chatbot-sources {
+	padding: 8px 16px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.sources-title {
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+
+.sources-list {
+	margin: 0;
+	padding-left: 16px;
+}
+
+.chatbot-messages {
+	flex: 1;
+	overflow-y: auto;
+	padding: 12px 16px;
+}
+
+.msg {
+	margin-bottom: 10px;
+	padding: 8px;
+	border-radius: 4px;
+	background: var(--background-secondary);
+}
+
+.msg-user {
+	border-left: 3px solid var(--text-accent);
+}
+
+.msg-assistant {
+	border-left: 3px solid #4caf50;
+}
+
+.msg-author {
+	font-size: 11px;
+	color: var(--text-muted);
+	margin-bottom: 4px;
+}
+
+.msg-content {
+	white-space: pre-wrap;
+}
+
+.chatbot-composer {
+	display: flex;
+	gap: 8px;
+	padding: 12px 16px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.chatbot-input {
+	flex: 1;
+	resize: vertical;
+}
+
+.chatbot-send {
+	padding: 6px 12px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.chatbot-send[disabled] {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.write-apply-panel {
+	border-top: 1px solid var(--background-modifier-border);
+	padding: 8px 16px;
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.write-apply-panel .panel-title {
+	font-weight: 600;
+	margin-right: auto;
+}
