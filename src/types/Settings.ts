@@ -10,6 +10,10 @@ export interface TeamDocsSettings {
 	userEmail: string;
 	conflictResolutionMode: "manual" | "auto-theirs" | "auto-mine";
 	attachmentsSubdir: string;
+	openaiApiKey: string;
+	openaiModel: string;
+	openaiTemperature: number;
+	openaiMaxTokens: number;
 }
 
 /**
@@ -24,4 +28,8 @@ export const DEFAULT_SETTINGS: TeamDocsSettings = {
 	userEmail: "",
 	conflictResolutionMode: "manual",
 	attachmentsSubdir: "attachments",
+	openaiApiKey: "",
+	openaiModel: "gpt-5-mini",
+	openaiTemperature: 0.2,
+	openaiMaxTokens: 4080,
 };
