@@ -38,7 +38,7 @@ export class GitService {
 				if (attempt === retries || !transient) {
 					throw err;
 				}
-				const jitter = Math.random() * 0.2 + 0.9; // 0.9-1.1
+				const jitter = Math.random() * 0.2 + 0.9;
 				const delay = Math.min(max, base * Math.pow(2, attempt)) * jitter;
 				await new Promise((res) => setTimeout(res, delay));
 			}
