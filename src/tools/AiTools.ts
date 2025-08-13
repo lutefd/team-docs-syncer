@@ -149,53 +149,110 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		propose_edit: tool({
 			description:
-				"Propose a full updated Markdown for a single file path inside the team docs folder.",
+				"Indicate that you want to edit a file. You must provide the complete updated file content in the 'content' parameter. Read the file first using read_doc, then provide the full updated content here.",
 			inputSchema: z.object({
-				path: z.string(),
-				instructions: z.string().optional(),
+				path: z.string().describe("Path to the file to edit"),
+				content: z
+					.string()
+					.describe(
+						"Complete updated file content - you must generate this based on the current content and requested changes"
+					),
+				instructions: z
+					.string()
+					.optional()
+					.describe("Optional editing instructions for the user"),
 			}),
 			execute: async ({
 				path,
+				content,
 				instructions,
 			}: {
 				path: string;
+				content: string;
 				instructions?: string;
 			}) => {
-				if (!isInsideTeam(path))
-					return { error: "outside-sync-folder" } as const;
-				return { ok: true, path, instructions: instructions || "" } as const;
+				console.log("[propose_edit] Called with:", {
+					path,
+					contentLength: content?.length || 0,
+					instructions,
+				});
+
+				try {
+					if (!isInsideTeam(path)) {
+						console.log("[propose_edit] Path outside team folder:", path);
+						return { error: "outside-sync-folder" } as const;
+					}
+
+					if (!content || content.trim().length === 0) {
+						console.log("[propose_edit] No content provided");
+						return { error: "no-content-provided" } as const;
+					}
+
+					const result = {
+						ok: true,
+						path,
+						content,
+						instructions: instructions || "",
+					} as const;
+
+					console.log("[propose_edit] Returning result:", {
+						ok: result.ok,
+						path: result.path,
+						contentLength: result.content.length,
+						instructions: result.instructions,
+					});
+
+					return result;
+				} catch (error) {
+					console.error("[propose_edit] Error:", error);
+					return { error: "execution-failed" } as const;
+				}
 			},
 		}),
 
 		create_doc: tool({
 			description:
-				"Create a new markdown file within the team docs folder (guards path). Returns created path.",
+				"Create a new markdown file within the team docs folder. You must provide the complete file content in the 'content' parameter.",
 			inputSchema: z.object({
 				path: z
 					.string()
 					.describe("Full path including .md under the team docs folder"),
 				content: z
 					.string()
+					.describe(
+						"Complete file content - you must generate appropriate content for this new file"
+					),
+				instructions: z
+					.string()
 					.optional()
-					.describe("Optional initial markdown content"),
+					.describe("Optional instructions about what was created"),
 			}),
 			execute: async ({
 				path,
 				content,
+				instructions,
 			}: {
 				path: string;
-				content?: string;
+				content: string;
+				instructions?: string;
 			}) => {
 				if (!isInsideTeam(path))
 					return { error: "outside-sync-folder" } as const;
 				const existing = plugin.app.vault.getAbstractFileByPath(path);
 				if (existing) return { error: "already-exists", path } as const;
+
 				const folderPath = path.split("/").slice(0, -1).join("/");
 				try {
 					await plugin.app.vault.createFolder(folderPath);
 				} catch {}
-				const file = await plugin.app.vault.create(path, content ?? "");
-				return { ok: true, path: file.path } as const;
+
+				const file = await plugin.app.vault.create(path, content);
+				return {
+					ok: true,
+					path: file.path,
+					content,
+					instructions: instructions || "",
+				} as const;
 			},
 		}),
 	} as const;
