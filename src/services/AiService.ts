@@ -9,6 +9,7 @@ export interface ChatResult {
 	text: string;
 	sources: string[];
 	proposals?: Array<{ path: string; content: string }>;
+	creations?: Array<{ path: string; content: string }>;
 }
 
 export class AiService {
@@ -36,6 +37,7 @@ export class AiService {
 		text: string;
 		sources?: string[];
 		proposals?: Array<{ path: string; content: string }>;
+		creations?: Array<{ path: string; content: string }>;
 	}> {
 		const model = this.getModel();
 		const kTemperature = this.plugin.settings.openaiTemperature ?? 0.2;
@@ -46,14 +48,23 @@ export class AiService {
 			role: "system",
 			content:
 				mode === "chat"
-					? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Prefer citing files by path. Use tools search_docs/read_doc to ground answers. Be concise.`
-					: `You help edit Markdown files strictly inside (${teamRoot}). Suggest minimal, safe changes. Use propose_edit to indicate which file to update; then output ONLY the full updated Markdown content in your final answer for that file. Do not touch files outside the folder.`,
+					? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use search_docs/read_doc to find information. If users ask about editing files, use propose_edit tool - first read the current content with read_doc, then provide the complete updated content in the propose_edit tool. Be concise and cite files using [[path/to/file.md|filename]] format.`
+					: `You help edit Markdown files strictly inside (${teamRoot}). For edits: 
+1. First use read_doc to get current content
+2. Generate complete updated content based on the user's request  
+3. Use propose_edit with the full updated content
+For new files, use create_doc with complete content. IMPORTANT: Do NOT include file content in your responses. After using tools, provide only a brief summary of what was done and reference files using [[path/to/file.md|filename]] format. The tools handle all file operations - your job is just to report what happened.`,
 		};
+
+		const allToolResults: any[] = [];
+		const sources = new Set<string>();
+		const proposals: Array<{ path: string; content: string }> = [];
+		const creations: Array<{ path: string; content: string }> = [];
 
 		const res = streamText({
 			model,
 			temperature: kTemperature,
-			messages,
+			messages: [boundary, ...messages],
 			tools: tools,
 			stopWhen: (options) => {
 				if (options.steps.length >= 10) {
@@ -68,6 +79,65 @@ export class AiService {
 				return false;
 			},
 			onStepFinish: (result) => {
+				console.log("[AiService] Step finished:", {
+					toolCalls: result.toolCalls?.length || 0,
+					toolResults: result.toolResults?.length || 0,
+				});
+
+				if (result.toolResults && result.toolResults.length > 0) {
+					for (const tr of result.toolResults) {
+						console.log(`[AiService] Processing tool result:`, {
+							toolName: tr.toolName,
+							output: tr.output,
+						});
+
+						allToolResults.push(tr);
+
+						if (tr.toolName === "search_docs") {
+							const arr = (tr as any).output as
+								| Array<{ path: string }>
+								| undefined;
+							arr?.forEach((r) => r?.path && sources.add(r.path));
+						}
+						if (tr.toolName === "read_doc") {
+							const r = (tr as any).output as { path?: string } | undefined;
+							if (r?.path) sources.add(r.path);
+						}
+						if (tr.toolName === "propose_edit") {
+							const r = (tr as any).output as
+								| {
+										path?: string;
+										content?: string;
+										instructions?: string;
+										ok?: boolean;
+								  }
+								| undefined;
+							console.log("[AiService] propose_edit result:", r);
+							if (r?.ok && r?.path && r?.content) {
+								proposals.push({ path: r.path, content: r.content });
+								console.log("[AiService] Added proposal:", {
+									path: r.path,
+									contentLength: r.content.length,
+									contentPreview: r.content.substring(0, 100) + "...",
+								});
+							}
+						}
+						if (tr.toolName === "create_doc") {
+							const r = (tr as any).output as
+								| { path?: string; content?: string; ok?: boolean }
+								| undefined;
+							console.log("[AiService] create_doc result:", r);
+							if (r?.ok && r?.path && r?.content) {
+								creations.push({ path: r.path, content: r.content });
+								console.log("[AiService] Added creation:", {
+									path: r.path,
+									contentLength: r.content.length,
+								});
+							}
+						}
+					}
+				}
+
 				if (result.toolCalls && result.toolCalls.length > 0 && onStatus) {
 					for (const toolCall of result.toolCalls) {
 						const toolName = toolCall.toolName;
@@ -92,7 +162,6 @@ export class AiService {
 
 		let text = "";
 		let counter = 0;
-
 		let hasStartedStreaming = false;
 
 		for await (const chunk of res.textStream) {
@@ -106,29 +175,15 @@ export class AiService {
 		}
 		console.log("[AiService] streamChat: done. total chars=", counter);
 
-		const sources = new Set<string>();
-		const proposals: Array<{ path: string; content: string }> = [];
-		const trArr = (await res.toolResults) as any[] | undefined;
-		console.log("[AiService] toolResults count=", trArr?.length || 0);
-		for (const tr of trArr ?? []) {
-			if (tr.toolName === "search_docs") {
-				const arr = (tr as any).output as Array<{ path: string }> | undefined;
-				arr?.forEach((r) => r?.path && sources.add(r.path));
-			}
-			if (tr.toolName === "read_doc") {
-				const r = (tr as any).output as { path?: string } | undefined;
-				if (r?.path) sources.add(r.path);
-			}
-			if (tr.toolName === "propose_edit") {
-				const r = (tr as any).output as { path?: string } | undefined;
-				if (r?.path && text.trim().length > 0) {
-					proposals.push({ path: r.path, content: text });
-				}
-			}
-		}
+		console.log("[AiService] Final counts:", {
+			toolResults: allToolResults.length,
+			sources: sources.size,
+			proposals: proposals.length,
+			creations: creations.length,
+		});
 
-		if (!text && (trArr?.length || 0) > 0) {
-			const toolContext = (trArr || [])
+		if (!text && allToolResults.length > 0) {
+			const toolContext = allToolResults
 				.map(
 					(tr: any, i: number) =>
 						`Tool #${i + 1} ${tr.toolName}: ${JSON.stringify(tr.output).slice(
@@ -140,9 +195,19 @@ export class AiService {
 			const citations = Array.from(sources).join(", ");
 			const followBoundary: ModelMessage = {
 				role: "system",
-				content: `You must now answer directly without calling any tools. Use the tool outputs below and keep the answer concise. If applicable, cite these file paths: ${
-					citations || "(none)"
-				}. If write mode, output ONLY a message saying you finished or if had any problems you encountered along with the link to the edited file following the pattern [[path/to/file.md|filename]].\n\n${toolContext}`,
+				content: `You must now answer directly without calling any tools. Based on your tool usage:
+
+${
+	proposals.length > 0
+		? `You proposed ${proposals.length} file edit(s). The user will see diff modals to review and apply changes.`
+		: ""
+}
+${creations.length > 0 ? `You created ${creations.length} new file(s).` : ""}
+
+Provide a brief summary of what you did. Reference files using [[path/to/file.md|filename]] format. Do NOT include file content in your response.
+
+Citations: ${citations || "(none)"}
+Tool outputs: ${toolContext}`,
 			};
 			const follow = await generateText({
 				model,
@@ -157,57 +222,7 @@ export class AiService {
 			text,
 			sources: Array.from(sources),
 			proposals: proposals.length ? proposals : undefined,
-		};
-	}
-
-	async chat(messages: ModelMessage[], mode: Mode): Promise<ChatResult> {
-		const model = this.getModel();
-		const kTemperature = this.plugin.settings.openaiTemperature ?? 0.2;
-
-		const teamRoot = this.plugin.settings.teamDocsPath;
-		const tools = buildTools(this.plugin);
-
-		const boundary: ModelMessage = {
-			role: "system",
-			content:
-				mode === "chat"
-					? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Prefer citing files by path. Use tools search_docs/read_doc to ground answers. Be concise.`
-					: `You help edit Markdown files strictly inside (${teamRoot}). Suggest minimal, safe changes. Use propose_edit to indicate which file to update; then output ONLY the full updated Markdown content in your final answer for that file. Do not touch files outside the folder.`,
-		};
-
-		const result = await generateText({
-			model,
-			temperature: kTemperature,
-			messages: [boundary, ...messages],
-			tools,
-		});
-
-		const text = result.text || "";
-
-		const sources = new Set<string>();
-		const proposals: Array<{ path: string; content: string }> = [];
-
-		for (const tr of result.toolResults ?? []) {
-			if (tr.toolName === "search_docs") {
-				const arr = (tr as any).output as Array<{ path: string }> | undefined;
-				arr?.forEach((r) => r?.path && sources.add(r.path));
-			}
-			if (tr.toolName === "read_doc") {
-				const r = (tr as any).output as { path?: string } | undefined;
-				if (r?.path) sources.add(r.path);
-			}
-			if (tr.toolName === "propose_edit") {
-				const r = (tr as any).output as { path?: string } | undefined;
-				if (r?.path && text.trim().length > 0) {
-					proposals.push({ path: r.path, content: text });
-				}
-			}
-		}
-
-		return {
-			text,
-			sources: Array.from(sources),
-			proposals: proposals.length ? proposals : undefined,
+			creations: creations.length ? creations : undefined,
 		};
 	}
 }
