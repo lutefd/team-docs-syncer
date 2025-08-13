@@ -30,8 +30,13 @@ export class AiService {
 	async streamChat(
 		messages: ModelMessage[],
 		mode: Mode,
-		onDelta: (chunk: string) => void
-	): Promise<ChatResult> {
+		onDelta: (delta: string) => void,
+		onStatus?: (status: string) => void
+	): Promise<{
+		text: string;
+		sources?: string[];
+		proposals?: Array<{ path: string; content: string }>;
+	}> {
 		const model = this.getModel();
 		const kTemperature = this.plugin.settings.openaiTemperature ?? 0.2;
 		const teamRoot = this.plugin.settings.teamDocsPath;
@@ -45,27 +50,59 @@ export class AiService {
 					: `You help edit Markdown files strictly inside (${teamRoot}). Suggest minimal, safe changes. Use propose_edit to indicate which file to update; then output ONLY the full updated Markdown content in your final answer for that file. Do not touch files outside the folder.`,
 		};
 
-		const res = await streamText({
+		const res = streamText({
 			model,
 			temperature: kTemperature,
-			messages: [boundary, ...messages],
-			tools,
+			messages,
+			tools: tools,
+			stopWhen: (options) => {
+				if (options.steps.length >= 10) {
+					return true;
+				}
+
+				const lastStep = options.steps[options.steps.length - 1];
+				if (lastStep && lastStep.toolCalls.length === 0) {
+					return true;
+				}
+
+				return false;
+			},
+			onStepFinish: (result) => {
+				if (result.toolCalls && result.toolCalls.length > 0 && onStatus) {
+					for (const toolCall of result.toolCalls) {
+						const toolName = toolCall.toolName;
+						console.log("[AiService] Step tool call:", toolName);
+						if (toolName === "search_docs") {
+							onStatus("🔍 Searching documents...");
+						} else if (toolName === "read_doc") {
+							onStatus("📖 Reading document...");
+						} else if (toolName === "follow_links") {
+							onStatus("🔗 Following document links...");
+						} else if (toolName === "propose_edit") {
+							onStatus("✏️ Writing document...");
+						} else if (toolName === "create_doc") {
+							onStatus("📄 Creating document...");
+						} else {
+							onStatus("🔧 Using tools...");
+						}
+					}
+				}
+			},
 		});
 
 		let text = "";
-		console.log("[AiService] streamChat: start receiving deltas");
 		let counter = 0;
-		for await (const delta of res.textStream) {
-			const s = typeof delta === "string" ? delta : String(delta);
-			text += s;
-			counter += s.length;
-			try {
-				onDelta(s);
-				if (counter % 500 === 0)
-					console.log("[AiService] streamed chars:", counter);
-			} catch (e) {
-				console.warn("[AiService] onDelta error", e);
+
+		let hasStartedStreaming = false;
+
+		for await (const chunk of res.textStream) {
+			if (!hasStartedStreaming) {
+				hasStartedStreaming = true;
+				if (onStatus) onStatus("📝 Generating response...");
 			}
+			text += chunk;
+			counter += chunk.length;
+			onDelta(chunk);
 		}
 		console.log("[AiService] streamChat: done. total chars=", counter);
 
@@ -84,7 +121,7 @@ export class AiService {
 			}
 			if (tr.toolName === "propose_edit") {
 				const r = (tr as any).output as { path?: string } | undefined;
-				if (r?.path && mode === "write" && text.trim().length > 0) {
+				if (r?.path && text.trim().length > 0) {
 					proposals.push({ path: r.path, content: text });
 				}
 			}
@@ -96,7 +133,7 @@ export class AiService {
 					(tr: any, i: number) =>
 						`Tool #${i + 1} ${tr.toolName}: ${JSON.stringify(tr.output).slice(
 							0,
-							800
+							6080
 						)}`
 				)
 				.join("\n\n");
@@ -105,7 +142,7 @@ export class AiService {
 				role: "system",
 				content: `You must now answer directly without calling any tools. Use the tool outputs below and keep the answer concise. If applicable, cite these file paths: ${
 					citations || "(none)"
-				}. If write mode, output ONLY the full updated Markdown for the selected file.\n\n${toolContext}`,
+				}. If write mode, output ONLY a message saying you finished or if had any problems you encountered along with the link to the edited file following the pattern [[path/to/file.md|filename]].\n\n${toolContext}`,
 			};
 			const follow = await generateText({
 				model,
@@ -161,10 +198,8 @@ export class AiService {
 			}
 			if (tr.toolName === "propose_edit") {
 				const r = (tr as any).output as { path?: string } | undefined;
-				if (r?.path) {
-					if (mode === "write" && text.trim().length > 0) {
-						proposals.push({ path: r.path, content: text });
-					}
+				if (r?.path && text.trim().length > 0) {
+					proposals.push({ path: r.path, content: text });
 				}
 			}
 		}
