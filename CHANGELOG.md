@@ -8,6 +8,38 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [1.3.0] - 2025-08-13
+
+### Added
+
+- Pinning system for files in chat sessions via `ChatSessionService.ts` (pin, unpin, getPinned methods).
+- @mention support in chatbot composer for searching and pinning files, with dropdown menu.
+- New AI tool `follow_links` in `AiTools.ts` to extract and follow internal Markdown links for better context gathering.
+- Handling for file creations and proposals in `AiService.ts` and `ChatbotView.ts`, including `handleCreations` and `handleProposals` methods.
+- Thinking state with animation in chatbot messages during AI processing.
+- Fullscreen diff modal with toggle between rendered Markdown and raw text views in `DiffModal.ts`.
+- Internal link fixing in rendered content for both chatbot messages and diff modal.
+- Status updates during tool usage in streaming (e.g., "Searching documents...").
+- Styles for pins, mention menu, thinking animation, and fullscreen diff modal in `styles.css`.
+
+### Changed
+
+- Bumped version to `1.3.0` in `manifest.json`, `package.json`, and `version.json`.
+- Updated system prompts in `AiService.ts` and `ChatbotView.ts` to emphasize tool usage, link following, and pinned files.
+- Refactored `streamChat` in `AiService.ts` to handle multi-step tool calls with `onStepFinish`, collect all tool results, and generate follow-up text summarizing actions without content.
+- Removed non-streaming `chat` method from `AiService.ts`.
+- Updated `propose_edit` and `create_doc` tools in `AiTools.ts` to require and return full content, with improved logging and error handling.
+- Increased snippet sizes in `search_docs` and added try-catch to `read_doc`.
+- Streamlined write mode in `ChatbotView.ts`: removed `EditTargetModal`, integrated edit generation via tools, handled proposals/creations directly.
+- UI tweaks in `ChatbotView.ts`: reordered header elements, added composer input handling for mentions.
+- Enhanced diff modal to be fullscreen with better rendering and link handling.
+
+### Fixed
+
+- Ensured proposals and creations are properly captured and applied even in multi-step tool chains.
+- Fixed potential empty responses by always generating a follow-up summary.
+- Improved reliability of file operations with folder creation and existence checks.
+
 ## [1.2.1] - 2025-08-12
 
 ### Changed
@@ -123,7 +155,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Initial setup (`chore: initial setup`)
 - Export stub properly to build (`chore: export stub properly to build`)
 
-[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.3.0
 [1.2.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.0
 [1.1.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.1
