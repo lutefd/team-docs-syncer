@@ -30,7 +30,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 					if (file instanceof TFile) {
 						try {
 							const txt = await plugin.app.vault.read(file);
-							snippet = txt.slice(0, 300);
+							snippet = txt.slice(0, 1400);
 						} catch {}
 					}
 					results.push({
@@ -53,8 +53,97 @@ export function buildTools(plugin: TeamDocsPlugin) {
 					return { error: "outside-sync-folder" } as const;
 				const file = plugin.app.vault.getAbstractFileByPath(path);
 				if (!(file instanceof TFile)) return { error: "not-found" } as const;
-				const content = await plugin.app.vault.read(file);
-				return { path, content };
+				try {
+					const content = await plugin.app.vault.read(file);
+					return { path, content };
+				} catch {
+					return { error: "read-failed" } as const;
+				}
+			},
+		}),
+
+		follow_links: tool({
+			description:
+				"Extract and follow internal document links from markdown content to gather comprehensive context. Use when you need to follow references to other documents.",
+			inputSchema: z.object({
+				content: z.string().describe("Markdown content to extract links from"),
+				currentPath: z.string().describe("Current document path for context"),
+				maxDepth: z
+					.number()
+					.int()
+					.min(1)
+					.max(10)
+					.optional()
+					.describe("Maximum depth to follow links (default 5)"),
+			}),
+			execute: async ({
+				content,
+				currentPath,
+				maxDepth = 5,
+			}: {
+				content: string;
+				currentPath: string;
+				maxDepth?: number;
+			}) => {
+				const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+				const links: string[] = [];
+				let match;
+
+				while ((match = linkRegex.exec(content)) !== null) {
+					let linkPath = match[1];
+
+					if (!linkPath.endsWith(".md")) {
+						linkPath += ".md";
+					}
+
+					if (!linkPath.startsWith(teamRoot + "/")) {
+						const currentDir = currentPath.substring(
+							0,
+							currentPath.lastIndexOf("/")
+						);
+						const resolvedPath = currentDir + "/" + linkPath;
+
+						if (isInsideTeam(resolvedPath)) {
+							linkPath = resolvedPath;
+						} else if (isInsideTeam(teamRoot + "/" + linkPath)) {
+							linkPath = teamRoot + "/" + linkPath;
+						}
+					}
+
+					if (
+						isInsideTeam(linkPath) &&
+						linkPath !== currentPath &&
+						!links.includes(linkPath)
+					) {
+						links.push(linkPath);
+					}
+				}
+
+				const limitedLinks = links.slice(0, Math.min(5, maxDepth));
+				const linkedDocs: Array<{
+					path: string;
+					title?: string;
+					snippet: string;
+				}> = [];
+
+				for (const linkPath of limitedLinks) {
+					const file = plugin.app.vault.getAbstractFileByPath(linkPath);
+					if (file instanceof TFile) {
+						try {
+							const linkedContent = await plugin.app.vault.read(file);
+							const title = file.basename;
+							const snippet = linkedContent.slice(0, 800);
+							linkedDocs.push({ path: linkPath, title, snippet });
+						} catch {}
+					}
+				}
+
+				return {
+					currentPath,
+					extractedLinks: links,
+					followedDocs: linkedDocs,
+					hasMoreLinks: links.length > limitedLinks.length,
+				};
 			},
 		}),
 
