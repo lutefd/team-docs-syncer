@@ -397,7 +397,11 @@ IMPORTANT: For edits, use propose_edit tool to specify which file to edit and wh
 					).open();
 				});
 				if (!picked) return;
-				await this.generateAndApplyEdit(picked);
+				await this.generateEditWithStreamChat(picked, [
+					system,
+					assistantPrep,
+					...session.messages,
+				]);
 				return;
 			}
 
@@ -471,13 +475,131 @@ IMPORTANT: For edits, use propose_edit tool to specify which file to edit and wh
 			if (finalSources.length) this.renderSources(finalSources);
 
 			if (result.proposals?.length) {
+				console.log("[Chatbot] Found proposals:", result.proposals);
 				await this.handleProposals(result.proposals);
+			} else {
+				console.log("[Chatbot] No proposals found in result");
+			}
+
+			if (result.creations?.length) {
+				console.log("[Chatbot] Found creations:", result.creations);
+				await this.handleCreations(result.creations);
+			} else {
+				console.log("[Chatbot] No creations found in result");
 			}
 		} catch (e: any) {
 			new Notice(`Chat error: ${e?.message || e}`);
 		}
 	}
 
+	private async generateEditWithStreamChat(
+		path: string,
+		messages: ModelMessage[]
+	) {
+		try {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (!(file instanceof TFile)) {
+				new Notice("File not found");
+				return;
+			}
+
+			const editSystem: ModelMessage = {
+				role: "system",
+				content: `You are editing the file: ${path}
+
+First use read_doc to get the current content, then use propose_edit with the complete updated content based on the user's request. Generate the full updated markdown content incorporating the requested changes while maintaining the existing structure and style unless specifically asked to change it.`,
+			};
+
+			const fileContext: ModelMessage = {
+				role: "user",
+				content: `Please edit the file: ${path}
+
+Apply the changes I requested while keeping the existing structure and style intact unless specifically asked to modify them.`,
+			};
+
+			const row = this.messagesEl.createDiv({ cls: `msg msg-assistant` });
+			row.createEl("div", { text: "Assistant", cls: "msg-author" });
+			const contentEl = row.createEl("div", { cls: "msg-content" });
+			let fullText = "";
+
+			console.log("[Chatbot] generateEditWithStreamChat for file:", path);
+			contentEl.textContent = "Reading file and generating changes...";
+			contentEl.addClass("thinking");
+
+			const result = await this.plugin.aiService!.streamChat(
+				[editSystem, ...messages, fileContext],
+				"write",
+				(delta) => {
+					if (fullText === "" && contentEl.hasClass("thinking")) {
+						contentEl.removeClass("thinking");
+						contentEl.textContent = "";
+					}
+					fullText += delta;
+					try {
+						contentEl.textContent = fullText;
+						this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+					} catch (e) {
+						console.warn("[Chatbot] Failed to render delta", e);
+					}
+				},
+				(status) => {
+					if (fullText === "" || contentEl.hasClass("thinking")) {
+						contentEl.textContent = status;
+						contentEl.addClass("thinking");
+					}
+				}
+			);
+
+			if (fullText.length === 0 && result.text && result.text.length > 0) {
+				fullText = result.text;
+				contentEl.textContent = fullText;
+			}
+
+			contentEl.removeClass("thinking");
+
+			const session = this.plugin.chatSessionService.getActive();
+			if (session) {
+				session.messages.push({ role: "assistant", content: fullText });
+			}
+
+			try {
+				contentEl.empty();
+				await MarkdownRenderer.render(
+					this.app,
+					fullText,
+					contentEl,
+					this.app.workspace.getActiveFile()?.path || "/",
+					this
+				);
+				this.fixInternalLinks(contentEl);
+			} catch (e) {
+				console.warn(
+					"[Chatbot] Markdown render failed; falling back to text",
+					e
+				);
+				contentEl.textContent = fullText;
+			}
+
+			if (result.proposals?.length) {
+				console.log(
+					"[Chatbot] Found proposals for target file:",
+					result.proposals
+				);
+				await this.handleProposals(result.proposals);
+			} else {
+				console.log(
+					"[Chatbot] No proposals found - this shouldn't happen in write mode"
+				);
+			}
+
+			if (result.creations?.length) {
+				console.log("[Chatbot] Found creations:", result.creations);
+				await this.handleCreations(result.creations);
+			}
+		} catch (e: any) {
+			new Notice(`Generate & Apply error: ${e?.message || e}`);
+		}
+	}
 	private async handleProposals(
 		proposals: Array<{ path: string; content: string }>
 	) {
@@ -489,6 +611,14 @@ IMPORTANT: For edits, use propose_edit tool to specify which file to edit and wh
 				if (file && file instanceof TFile) {
 					currentContent = await this.app.vault.read(file);
 				}
+
+				console.log("[ChatbotView] Creating diff modal with:");
+				console.log("- Current content length:", currentContent.length);
+				console.log("- Proposed content length:", proposal.content.length);
+				console.log(
+					"- Proposed content preview:",
+					proposal.content.substring(0, 200)
+				);
 
 				const modal = new DiffModal(
 					this.app,
@@ -527,6 +657,49 @@ IMPORTANT: For edits, use propose_edit tool to specify which file to edit and wh
 		}
 	}
 
+	private async handleCreations(
+		creations: Array<{ path: string; content: string }>
+	) {
+		for (const creation of creations) {
+			try {
+				const file = this.app.vault.getAbstractFileByPath(creation.path);
+				if (file && file instanceof TFile) {
+					const currentContent = await this.app.vault.read(file);
+					const modal = new DiffModal(
+						this.app,
+						creation.path,
+						currentContent,
+						creation.content,
+						async (confirmed: boolean) => {
+							if (confirmed) {
+								try {
+									await this.app.vault.modify(file, creation.content);
+									new Notice(`Successfully updated ${creation.path}`);
+								} catch (error) {
+									new Notice(`Failed to update ${creation.path}: ${error}`);
+								}
+							}
+						}
+					);
+					modal.open();
+				} else {
+					const folderPath = creation.path.split("/").slice(0, -1).join("/");
+					if (folderPath) {
+						try {
+							await this.app.vault.createFolder(folderPath);
+						} catch {}
+					}
+					await this.app.vault.create(creation.path, creation.content);
+					new Notice(`Successfully created ${creation.path}`);
+					await this.openFile(creation.path);
+				}
+			} catch (error) {
+				console.error("Error handling creation:", error);
+				new Notice(`Error creating file ${creation.path}: ${error}`);
+			}
+		}
+	}
+
 	private renderMessages() {
 		if (!this.messagesEl) return;
 		this.messagesEl.empty();
@@ -552,79 +725,6 @@ IMPORTANT: For edits, use propose_edit tool to specify which file to edit and wh
 			const li = list.createEl("li");
 			const a = li.createEl("a", { text: p, cls: "internal-link" });
 			a.onclick = () => this.openFile(p);
-		}
-	}
-
-	private async generateAndApplyEdit(path: string) {
-		try {
-			const file = this.app.vault.getAbstractFileByPath(path);
-			if (!(file instanceof TFile)) {
-				new Notice("File not found");
-				return;
-			}
-			const content = await this.app.vault.read(file);
-
-			const sys: ModelMessage = {
-				role: "system",
-				content: `Produce a revised full Markdown for the selected file. Keep structure intact; only improve per the last user request. Output ONLY the Markdown content, no code fences.`,
-			};
-			const session = this.plugin.chatSessionService.getActive();
-			if (!session) return;
-			const user: ModelMessage = {
-				role: "user",
-				content: `Original content of ${path}:\n\n${content}\n\nRevise per our discussion.`,
-			};
-
-			const row = this.messagesEl.createDiv({ cls: `msg msg-assistant` });
-			row.createEl("div", { text: "Assistant", cls: "msg-author" });
-			const contentEl = row.createEl("div", { cls: "msg-content" });
-			let fullText = "";
-			const result = await this.plugin.aiService!.streamChat(
-				[sys, ...session.messages, user],
-				"write",
-				(delta) => {
-					fullText += delta;
-					contentEl.textContent = fullText;
-					this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
-				}
-			);
-			if (!fullText && result.text) {
-				fullText = result.text;
-				contentEl.textContent = fullText;
-			}
-			session.messages.push({ role: "assistant", content: fullText });
-			try {
-				contentEl.empty();
-				await MarkdownRenderer.render(
-					this.app,
-					fullText,
-					contentEl,
-					this.app.workspace.getActiveFile()?.path || "/",
-					this
-				);
-			} catch {
-				contentEl.textContent = fullText;
-			}
-
-			const confirmed = await new Promise<boolean>((resolve) => {
-				new DiffModal(this.app, file.path, content, fullText, (ok) =>
-					resolve(ok)
-				).open();
-			});
-			if (!confirmed) {
-				new Notice("Apply cancelled.");
-				return;
-			}
-
-			const reserved = await this.plugin.reservationManager.reserveFile(file);
-			if (!reserved) {
-				new Notice("Could not reserve file; edit aborted.");
-				return;
-			}
-			await this.app.vault.modify(file, fullText);
-			new Notice("Edit applied.");
-		} catch (e: any) {
-			new Notice(`Generate & Apply error: ${e?.message || e}`);
 		}
 	}
 

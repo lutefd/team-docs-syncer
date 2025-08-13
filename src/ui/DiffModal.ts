@@ -1,7 +1,8 @@
-import { App, Modal, Setting } from "obsidian";
+import { App, Modal, Setting, MarkdownRenderer, Component } from "obsidian";
 
 export class DiffModal extends Modal {
 	private hasResult = false;
+	private component: Component;
 
 	constructor(
 		app: App,
@@ -11,20 +12,28 @@ export class DiffModal extends Modal {
 		private onCloseResult?: (confirmed: boolean) => void
 	) {
 		super(app);
+		this.component = new Component();
 	}
 
-	onOpen(): void {
+	async onOpen(): Promise<void> {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		// Make modal full-screen
 		this.modalEl.addClass("diff-modal-fullscreen");
 
-		// Header with file path
 		const header = contentEl.createDiv({ cls: "diff-modal-header" });
 		header.createEl("h3", { text: `Review Changes: ${this.filePath}` });
 
-		// Main content area with proper scrolling
+		const viewToggle = header.createDiv({ cls: "diff-view-toggle" });
+		const markdownBtn = viewToggle.createEl("button", {
+			text: "Rendered",
+			cls: "diff-toggle-btn is-active",
+		});
+		const rawBtn = viewToggle.createEl("button", {
+			text: "Raw",
+			cls: "diff-toggle-btn",
+		});
+
 		const container = contentEl.createDiv({ cls: "diff-modal-content" });
 		const columns = container.createDiv({ cls: "diff-columns" });
 
@@ -33,13 +42,74 @@ export class DiffModal extends Modal {
 
 		left.createEl("h4", { text: "Current" });
 		const leftContainer = left.createDiv({ cls: "diff-content-container" });
-		const leftPre = leftContainer.createEl("pre", { cls: "diff-pre" });
-		leftPre.textContent = this.original;
 
 		right.createEl("h4", { text: "Proposed" });
 		const rightContainer = right.createDiv({ cls: "diff-content-container" });
-		const rightPre = rightContainer.createEl("pre", { cls: "diff-pre" });
-		rightPre.textContent = this.proposed;
+
+		const leftRendered = leftContainer.createDiv({ cls: "diff-rendered" });
+		const leftRaw = leftContainer.createEl("pre", {
+			cls: "diff-pre",
+			attr: { style: "display: none;" },
+		});
+		leftRaw.textContent = this.original;
+
+		const rightRendered = rightContainer.createDiv({ cls: "diff-rendered" });
+		const rightRaw = rightContainer.createEl("pre", {
+			cls: "diff-pre",
+			attr: { style: "display: none;" },
+		});
+		rightRaw.textContent = this.proposed;
+
+		try {
+			await MarkdownRenderer.render(
+				this.app,
+				this.original,
+				leftRendered,
+				this.filePath,
+				this.component
+			);
+			this.fixInternalLinks(leftRendered);
+		} catch (e) {
+			console.warn("[DiffModal] Failed to render original markdown:", e);
+			leftRendered.textContent = this.original;
+		}
+
+		try {
+			await MarkdownRenderer.render(
+				this.app,
+				this.proposed,
+				rightRendered,
+				this.filePath,
+				this.component
+			);
+			this.fixInternalLinks(rightRendered);
+		} catch (e) {
+			console.warn("[DiffModal] Failed to render proposed markdown:", e);
+			rightRendered.textContent = this.proposed;
+		}
+
+		const showRendered = () => {
+			leftRendered.style.display = "block";
+			rightRendered.style.display = "block";
+			leftRaw.style.display = "none";
+			rightRaw.style.display = "none";
+			markdownBtn.addClass("is-active");
+			rawBtn.removeClass("is-active");
+		};
+
+		const showRaw = () => {
+			leftRendered.style.display = "none";
+			rightRendered.style.display = "none";
+			leftRaw.style.display = "block";
+			rightRaw.style.display = "block";
+			markdownBtn.removeClass("is-active");
+			rawBtn.addClass("is-active");
+		};
+
+		markdownBtn.onclick = showRendered;
+		rawBtn.onclick = showRaw;
+
+		showRendered();
 
 		new Setting(contentEl)
 			.addButton((b) =>
@@ -65,6 +135,22 @@ export class DiffModal extends Modal {
 		if (!this.hasResult) {
 			this.onCloseResult?.(false);
 		}
+		this.component.unload();
 		this.contentEl.empty();
+	}
+
+	private fixInternalLinks(container: HTMLElement) {
+		const links = container.querySelectorAll("a.internal-link");
+		links.forEach((link) => {
+			const href = link.getAttribute("data-href") || link.getAttribute("href");
+			if (href) {
+				link.removeAttribute("href");
+				(link as HTMLElement).onclick = (e) => {
+					e.preventDefault();
+					link.addClass("internal-link-preview");
+				};
+				link.addClass("internal-link");
+			}
+		});
 	}
 }
