@@ -56,4 +56,21 @@ export class ChatSessionService {
 			}
 		}
 	}
+
+	pin(path: string): void {
+		const s = this.getActive();
+		if (!s) return;
+		s.pinnedPaths.add(path);
+	}
+
+	unpin(path: string): void {
+		const s = this.getActive();
+		if (!s) return;
+		s.pinnedPaths.delete(path);
+	}
+
+	getPinned(): string[] {
+		const s = this.getActive();
+		return s ? Array.from(s.pinnedPaths) : [];
+	}
 }
