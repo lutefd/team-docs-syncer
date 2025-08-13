@@ -1,7 +1,7 @@
 {
 	"id": "team-docs-git-sync",
 	"name": "Team Docs Git Sync",
-	"version": "1.2.0",
+	"version": "1.3.0",
 	"minAppVersion": "0.15.0",
 	"description": "Collaborative team documentation with Git sync and conflict resolution",
 	"author": "Luis Dourado",
