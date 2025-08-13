@@ -23,6 +23,11 @@ export class ChatbotView extends ItemView {
 	private messagesEl!: HTMLElement;
 	private inputEl!: HTMLTextAreaElement;
 	private sendBtn!: HTMLButtonElement;
+	private pinsEl!: HTMLElement;
+	private mentionMenuEl?: HTMLElement;
+	private mentionActive = false;
+	private mentionItems: string[] = [];
+	private mentionIndex = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TeamDocsPlugin) {
 		super(leaf);
@@ -50,19 +55,27 @@ export class ChatbotView extends ItemView {
 		container.addClass("team-chatbot-view");
 
 		const header = container.createDiv({ cls: "chatbot-header" });
-		header.createEl("h3", { text: "Team Docs Chatbot" });
 
-		const sessionsBtn = header.createEl("button", { text: "Sessions" });
+		const modeWrap = header.createDiv({ cls: "chatbot-mode" });
+		const chatBtn = modeWrap.createEl("button", {
+			text: "Chat",
+			cls: "chatbot-btn",
+		});
+		const writeBtn = modeWrap.createEl("button", {
+			text: "Write",
+			cls: "chatbot-btn",
+		});
+
+		const sessionsBtn = header.createEl("button", {
+			text: "Sessions",
+			cls: "chatbot-btn",
+		});
 		sessionsBtn.onclick = () => {
-			console.log("[Chatbot] Open sessions modal");
 			new ChatSessionsModal(this.app, this.plugin, () =>
 				this.renderMessages()
 			).open();
 		};
 
-		const modeWrap = header.createDiv({ cls: "chatbot-mode" });
-		const chatBtn = modeWrap.createEl("button", { text: "Chat" });
-		const writeBtn = modeWrap.createEl("button", { text: "Write" });
 		const setMode = (m: Mode) => {
 			this.mode = m;
 			chatBtn.toggleClass("is-active", m === "chat");
@@ -73,7 +86,8 @@ export class ChatbotView extends ItemView {
 		writeBtn.onclick = () => setMode("write");
 		setMode("chat");
 
-		this.renderSystemNotice(header);
+		this.pinsEl = container.createDiv({ cls: "chatbot-pins" });
+		this.renderPins();
 
 		this.sourcesEl = container.createDiv({ cls: "chatbot-sources" });
 
@@ -96,44 +110,148 @@ export class ChatbotView extends ItemView {
 				e.preventDefault();
 				this.handleSend();
 			}
+			if (this.mentionActive) {
+				if (e.key === "ArrowDown") {
+					e.preventDefault();
+					this.mentionIndex = Math.min(
+						this.mentionIndex + 1,
+						this.mentionItems.length - 1
+					);
+					this.renderMentionMenu();
+				} else if (e.key === "ArrowUp") {
+					e.preventDefault();
+					this.mentionIndex = Math.max(this.mentionIndex - 1, 0);
+					this.renderMentionMenu();
+				} else if (e.key === "Enter") {
+					e.preventDefault();
+					this.applyMentionSelection();
+				} else if (e.key === "Escape") {
+					this.hideMentionMenu();
+				}
+			}
 		});
+
+		this.inputEl.addEventListener("input", () => this.onComposerInput());
 	}
 
 	async onClose(): Promise<void> {}
 
-	private async reviewAndApplyProposal(path: string, content: string) {
-		try {
-			const file = this.app.vault.getAbstractFileByPath(path);
-			if (!(file instanceof TFile)) {
-				new Notice("File not found for proposal");
-				return;
-			}
-			if (!path.startsWith(this.plugin.settings.teamDocsPath + "/")) {
-				new Notice("Edit blocked: outside team docs folder.");
-				return;
-			}
-
-			const original = await this.app.vault.read(file);
-			const confirmed = await new Promise<boolean>((resolve) => {
-				new DiffModal(this.app, file.path, original, content, (ok) =>
-					resolve(ok)
-				).open();
-			});
-			if (!confirmed) {
-				new Notice("Apply cancelled.");
-				return;
-			}
-
-			const reserved = await this.plugin.reservationManager.reserveFile(file);
-			if (!reserved) {
-				new Notice("Could not reserve file; edit aborted.");
-				return;
-			}
-			await this.app.vault.modify(file, content);
-			new Notice("Proposal applied.");
-		} catch (e: any) {
-			new Notice(`Apply proposal error: ${e?.message || e}`);
+	private renderPins() {
+		if (!this.pinsEl) return;
+		this.pinsEl.empty();
+		const session = this.plugin.chatSessionService.getActive();
+		const pins = session ? Array.from(session.pinnedPaths) : [];
+		for (const p of pins) {
+			const chip = this.pinsEl.createDiv({ cls: "pin-chip" });
+			chip.createSpan({ text: p, cls: "pin-label" });
+			const x = chip.createEl("button", { text: "×", cls: "pin-remove" });
+			x.onclick = () => {
+				this.plugin.chatSessionService.unpin(p);
+				this.renderPins();
+			};
 		}
+	}
+
+	private onComposerInput() {
+		console.log("[Chatbot] onComposerInput called");
+		const val = this.inputEl.value;
+		console.log("[Chatbot] Input value:", val);
+		const at = this.findActiveMention(
+			val,
+			this.inputEl.selectionStart || val.length
+		);
+		console.log("[Chatbot] Found mention:", at);
+		if (!at) {
+			this.hideMentionMenu();
+			return;
+		}
+		const q = at.token.slice(1);
+		console.log("[Chatbot] Search query:", q);
+		const results = (this.plugin.markdownIndexService?.search(q, 8) || []).map(
+			(r) => r.path
+		);
+		console.log("[Chatbot] Search results:", results);
+		this.mentionItems = results;
+		this.mentionIndex = 0;
+		if (results.length > 0) this.showMentionMenu(results);
+		else this.hideMentionMenu();
+	}
+
+	private findActiveMention(
+		text: string,
+		caret: number
+	): { start: number; end: number; token: string } | null {
+		const left = text.slice(0, caret);
+		const m = left.match(/@[^\s@]*$/);
+		if (!m) return null;
+		const start = left.lastIndexOf("@");
+		const end = caret;
+		const token = text.slice(start, end);
+		return { start, end, token };
+	}
+
+	private showMentionMenu(items: string[]) {
+		console.log("[Chatbot] showMentionMenu called with:", items);
+		if (!this.mentionMenuEl) {
+			const composer = this.container.querySelector(
+				".chatbot-composer"
+			) as HTMLElement;
+			this.mentionMenuEl =
+				composer?.createDiv({ cls: "mention-menu" }) ||
+				this.container.createDiv({ cls: "mention-menu" });
+		}
+		this.mentionActive = true;
+		this.renderMentionMenu();
+	}
+
+	private renderMentionMenu() {
+		console.log("[Chatbot] renderMentionMenu called");
+		if (!this.mentionMenuEl) return;
+		this.mentionMenuEl.empty();
+		this.mentionMenuEl.addClass("open");
+		this.mentionMenuEl.style.display = "block";
+		for (let i = 0; i < this.mentionItems.length; i++) {
+			const p = this.mentionItems[i];
+			const item = this.mentionMenuEl.createDiv({ cls: "mention-item" });
+			if (i === this.mentionIndex) item.addClass("active");
+			item.setText(p);
+			item.onclick = () => {
+				this.mentionIndex = i;
+				this.applyMentionSelection();
+			};
+		}
+		this.mentionMenuEl.style.position = "absolute";
+		this.mentionMenuEl.style.bottom = "100%";
+		this.mentionMenuEl.style.left = "0";
+		this.mentionMenuEl.style.right = "0";
+		this.mentionMenuEl.style.marginBottom = "4px";
+	}
+
+	private hideMentionMenu() {
+		console.log("[Chatbot] hideMentionMenu called");
+		this.mentionActive = false;
+		if (this.mentionMenuEl) {
+			this.mentionMenuEl.style.display = "none";
+			this.mentionMenuEl.removeClass("open");
+		}
+	}
+
+	private applyMentionSelection() {
+		if (!this.mentionActive || this.mentionItems.length === 0) return;
+		const val = this.inputEl.value;
+		const caret = this.inputEl.selectionStart || val.length;
+		const at = this.findActiveMention(val, caret);
+		if (!at) return;
+		const picked = this.mentionItems[this.mentionIndex];
+		const before = val.slice(0, at.start);
+		const after = val.slice(at.end);
+		const inserted = `@${picked} `;
+		this.inputEl.value = before + inserted + after;
+		const newCaret = (before + inserted).length;
+		this.inputEl.setSelectionRange(newCaret, newCaret);
+		this.hideMentionMenu();
+		this.plugin.chatSessionService.pin(picked);
+		this.renderPins();
 	}
 
 	private renderSystemNotice(host?: HTMLElement) {
@@ -231,15 +349,25 @@ export class ChatbotView extends ItemView {
 		this.appendMessage({ role: "user", content: query });
 		this.inputEl.value = "";
 
+		const pinned = this.plugin.chatSessionService.getPinned();
 		const candidates = this.plugin.markdownIndexService?.search(query, 5) || [];
-		this.renderSources(candidates.map((c) => c.path));
 
 		const system: ModelMessage = {
 			role: "system",
 			content:
 				this.mode === "chat"
-					? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${this.plugin.settings.teamDocsPath}). Use the provided file list as references. If unsure, say so. Keep answers concise and cite files by path.`
-					: `You assist with editing Markdown files in the team sync folder (${this.plugin.settings.teamDocsPath}). Propose minimal, safe changes. Never create, edit, or reference files outside this folder. When suggesting an edit, output a short rationale followed by a full updated Markdown for a single chosen file.`,
+					? `You are a helpful assistant for a software team. CRITICAL: You MUST use search_docs tool for every question to read actual file content before answering. Never guess or assume file contents. ${
+							pinned.length > 0
+								? "The user has pinned specific files - search these first, but also search for additional relevant files."
+								: "Use search_docs to find all relevant files."
+					  } If search_docs snippets are insufficient, use read_doc to get full file content. When you find documents with internal links [[path]] to other relevant documents, use follow_links tool to gather comprehensive context by following those references (up to 5 documents deep). Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`
+					: `You are a helpful assistant for editing team documents. CRITICAL: You MUST use search_docs tool to read actual file content before making any edits. Never guess file contents. ${
+							pinned.length > 0
+								? "Search pinned files first, then search for additional context if needed."
+								: "Use search_docs to understand all relevant context."
+					  } Use read_doc for full content when needed. When documents contain internal links [[path]] to related files, use follow_links tool to gather comprehensive context before making edits. 
+
+IMPORTANT: For edits, use propose_edit tool to specify which file to edit and what changes to make. For new files, use create_doc tool to specify the path and content. DO NOT output file content in your response - the tools handle the actual file operations. After using tools, only provide a brief summary of what was done and reference files using [[path/to/file.md|filename]] format for clickable links.`,
 		};
 
 		const contextBlurb = candidates
@@ -253,7 +381,9 @@ export class ChatbotView extends ItemView {
 
 		const assistantPrep: ModelMessage = {
 			role: "system",
-			content: `Relevant files (by title/frontmatter):\n\n${contextBlurb}`,
+			content: `Relevant files (by title/frontmatter):\n\n${contextBlurb}\n\nPinned files:\n${pinned
+				.map((p, i) => `#${i + 1} ${p}`)
+				.join("\n")}`,
 		};
 
 		try {
@@ -282,10 +412,16 @@ export class ChatbotView extends ItemView {
 			let fullText = "";
 
 			console.log("[Chatbot] streamChat start, mode=", this.mode);
+			contentEl.textContent = "Thinking...";
+			contentEl.addClass("thinking");
 			const result = await this.plugin.aiService!.streamChat(
 				msgList,
 				this.mode,
 				(delta) => {
+					if (fullText === "" && contentEl.hasClass("thinking")) {
+						contentEl.removeClass("thinking");
+						contentEl.textContent = "";
+					}
 					fullText += delta;
 					try {
 						contentEl.textContent = fullText;
@@ -295,6 +431,12 @@ export class ChatbotView extends ItemView {
 					} catch (e) {
 						console.warn("[Chatbot] Failed to render delta", e);
 					}
+				},
+				(status) => {
+					if (fullText === "" || contentEl.hasClass("thinking")) {
+						contentEl.textContent = status;
+						contentEl.addClass("thinking");
+					}
 				}
 			);
 			console.log("[Chatbot] streamChat done. text length=", fullText.length);
@@ -303,6 +445,8 @@ export class ChatbotView extends ItemView {
 				fullText = result.text;
 				contentEl.textContent = fullText;
 			}
+
+			contentEl.removeClass("thinking");
 
 			session.messages.push({ role: "assistant", content: fullText });
 			try {
@@ -314,6 +458,7 @@ export class ChatbotView extends ItemView {
 					this.app.workspace.getActiveFile()?.path || "/",
 					this
 				);
+				this.fixInternalLinks(contentEl);
 			} catch (e) {
 				console.warn(
 					"[Chatbot] Markdown render failed; falling back to text",
@@ -321,9 +466,64 @@ export class ChatbotView extends ItemView {
 				);
 				contentEl.textContent = fullText;
 			}
-			if (result.sources?.length) this.renderSources(result.sources);
+
+			const finalSources = result.sources?.length ? result.sources : [];
+			if (finalSources.length) this.renderSources(finalSources);
+
+			if (result.proposals?.length) {
+				await this.handleProposals(result.proposals);
+			}
 		} catch (e: any) {
 			new Notice(`Chat error: ${e?.message || e}`);
+		}
+	}
+
+	private async handleProposals(
+		proposals: Array<{ path: string; content: string }>
+	) {
+		for (const proposal of proposals) {
+			try {
+				const file = this.app.vault.getAbstractFileByPath(proposal.path);
+				let currentContent = "";
+
+				if (file && file instanceof TFile) {
+					currentContent = await this.app.vault.read(file);
+				}
+
+				const modal = new DiffModal(
+					this.app,
+					proposal.path,
+					currentContent,
+					proposal.content,
+					async (confirmed: boolean) => {
+						if (confirmed) {
+							try {
+								if (file && file instanceof TFile) {
+									await this.app.vault.modify(file, proposal.content);
+								} else {
+									const folderPath = proposal.path
+										.split("/")
+										.slice(0, -1)
+										.join("/");
+									if (folderPath) {
+										try {
+											await this.app.vault.createFolder(folderPath);
+										} catch {}
+									}
+									await this.app.vault.create(proposal.path, proposal.content);
+								}
+								new Notice(`Successfully updated ${proposal.path}`);
+							} catch (error) {
+								new Notice(`Failed to update ${proposal.path}: ${error}`);
+							}
+						}
+					}
+				);
+				modal.open();
+			} catch (error) {
+				console.error("Error handling proposal:", error);
+				new Notice(`Error processing proposal for ${proposal.path}`);
+			}
 		}
 	}
 
@@ -433,5 +633,20 @@ export class ChatbotView extends ItemView {
 		if (file) {
 			await this.app.workspace.openLinkText(filePath, "", false);
 		}
+	}
+
+	private fixInternalLinks(container: HTMLElement) {
+		const links = container.querySelectorAll("a.internal-link");
+		links.forEach((link) => {
+			const href = link.getAttribute("data-href") || link.getAttribute("href");
+			if (href) {
+				link.removeAttribute("href");
+				(link as HTMLElement).onclick = (e) => {
+					e.preventDefault();
+					this.openFile(href);
+				};
+				link.addClass("internal-link");
+			}
+		});
 	}
 }
