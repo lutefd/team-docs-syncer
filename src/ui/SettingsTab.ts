@@ -131,7 +131,9 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 					})
 			);
 
-		containerEl.createEl("h3", { text: "AI (OpenAI)" });
+		containerEl.createEl("h3", { text: "AI Providers" });
+
+		containerEl.createEl("h4", { text: "OpenAI" });
 
 		new Setting(containerEl)
 			.setName("OpenAI API Key")
@@ -139,25 +141,75 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder("sk-...")
-					.setValue(this.plugin.settings.openaiApiKey)
+					.setValue(this.plugin.settings.ai.openaiApiKey)
 					.onChange(async (value) => {
-						this.plugin.settings.openaiApiKey = value.trim();
+						this.plugin.settings.ai.openaiApiKey = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		containerEl.createEl("h4", { text: "Anthropic" });
+
+		new Setting(containerEl)
+			.setName("Anthropic API Key")
+			.setDesc("Your Anthropic API key for Claude models.")
+			.addText((text) =>
+				text
+					.setPlaceholder("sk-ant-...")
+					.setValue(this.plugin.settings.ai.anthropicApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.ai.anthropicApiKey = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		containerEl.createEl("h4", { text: "Ollama" });
+
+		new Setting(containerEl)
+			.setName("Ollama Base URL")
+			.setDesc("Base URL for your Ollama instance.")
+			.addText((text) =>
+				text
+					.setPlaceholder("http://localhost:11434")
+					.setValue(this.plugin.settings.ai.ollamaBaseUrl)
+					.onChange(async (value) => {
+						this.plugin.settings.ai.ollamaBaseUrl = value.trim();
 						await this.plugin.saveSettings();
 					})
 			);
 
 		new Setting(containerEl)
-			.setName("Model")
-			.setDesc("OpenAI chat model to use (e.g., gpt-5-mini)")
+			.setName("Ollama Models")
+			.setDesc("Comma-separated list of available Ollama models.")
 			.addText((text) =>
 				text
-					.setPlaceholder("gpt-5-mini")
-					.setValue(this.plugin.settings.openaiModel)
+					.setPlaceholder("llama3.2:3b, gemma2:9b")
+					.setValue(this.plugin.settings.ai.ollamaModels.join(", "))
 					.onChange(async (value) => {
-						this.plugin.settings.openaiModel = value.trim();
+						this.plugin.settings.ai.ollamaModels = value
+							.split(",")
+							.map((m) => m.trim())
+							.filter((m) => m.length > 0);
 						await this.plugin.saveSettings();
 					})
 			);
+
+		containerEl.createEl("h4", { text: "Google" });
+
+		new Setting(containerEl)
+			.setName("Google API Key")
+			.setDesc("Your Google AI API key for Gemini models.")
+			.addText((text) =>
+				text
+					.setPlaceholder("AI...")
+					.setValue(this.plugin.settings.ai.googleApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.ai.googleApiKey = value.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		containerEl.createEl("h4", { text: "Legacy Settings" });
 
 		new Setting(containerEl)
 			.setName("Temperature")

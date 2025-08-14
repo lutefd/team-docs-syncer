@@ -2,6 +2,8 @@ import TeamDocsPlugin from "../../main";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText, type ModelMessage } from "ai";
 import { buildTools } from "../tools/AiTools";
+import { AiProviderFactory } from "./AiProviderFactory";
+import { AiProvider } from "../types/AiProvider";
 
 export type Mode = "chat" | "write";
 
@@ -15,34 +17,47 @@ export interface ChatResult {
 export class AiService {
 	constructor(private plugin: TeamDocsPlugin) {}
 
-	hasApiKey(): boolean {
-		const key = this.plugin.settings.openaiApiKey?.trim();
-		return !!key;
+	hasApiKey(provider?: AiProvider): boolean {
+		if (!provider) {
+			const key = this.plugin.settings.openaiApiKey?.trim();
+			return !!key;
+		}
+
+		const factory = new AiProviderFactory(this.plugin.settings);
+		return factory.hasValidApiKey(provider);
 	}
 
-	private getModel() {
-		const apiKey = this.plugin.settings.openaiApiKey?.trim();
-		if (!apiKey) throw new Error("OpenAI API key not set");
-		const provider = createOpenAI({ apiKey });
-		const modelName = this.plugin.settings.openaiModel || "gpt-5-mini";
-		return provider(modelName);
+	private getModel(provider?: AiProvider, modelId?: string) {
+		if (!provider || !modelId) {
+			const apiKey = this.plugin.settings.openaiApiKey?.trim();
+			if (!apiKey) throw new Error("OpenAI API key not set");
+			const openaiProvider = createOpenAI({ apiKey });
+			const modelName = this.plugin.settings.openaiModel || "gpt-4o-mini";
+			return openaiProvider(modelName);
+		}
+
+		const factory = new AiProviderFactory(this.plugin.settings);
+		return factory.createModel(provider, modelId);
 	}
 
 	async streamChat(
 		messages: ModelMessage[],
 		mode: Mode,
 		onDelta: (delta: string) => void,
-		onStatus?: (status: string) => void
+		onStatus?: (status: string) => void,
+		provider?: AiProvider,
+		modelId?: string
 	): Promise<{
 		text: string;
 		sources?: string[];
 		proposals?: Array<{ path: string; content: string }>;
 		creations?: Array<{ path: string; content: string }>;
 	}> {
-		const model = this.getModel();
+		const model = this.getModel(provider, modelId);
 		const kTemperature = this.plugin.settings.openaiTemperature ?? 0.2;
 		const teamRoot = this.plugin.settings.teamDocsPath;
-		const tools = buildTools(this.plugin);
+
+		let tools = buildTools(this.plugin);
 
 		const boundary: ModelMessage = {
 			role: "system",

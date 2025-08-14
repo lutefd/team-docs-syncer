@@ -1,3 +1,5 @@
+import { AiProviderSettings, DEFAULT_AI_PROVIDER_SETTINGS } from "./AiProvider";
+
 /**
  * Plugin configuration interface
  */
@@ -10,8 +12,11 @@ export interface TeamDocsSettings {
 	userEmail: string;
 	conflictResolutionMode: "manual" | "auto-theirs" | "auto-mine";
 	attachmentsSubdir: string;
-	openaiApiKey: string;
-	openaiModel: string;
+
+	ai: AiProviderSettings;
+
+	openaiApiKey?: string;
+	openaiModel?: string;
 	openaiTemperature: number;
 	openaiMaxTokens: number;
 }
@@ -28,8 +33,12 @@ export const DEFAULT_SETTINGS: TeamDocsSettings = {
 	userEmail: "",
 	conflictResolutionMode: "manual",
 	attachmentsSubdir: "attachments",
+
+	ai: DEFAULT_AI_PROVIDER_SETTINGS,
+
+	// Legacy settings (for migration)
 	openaiApiKey: "",
-	openaiModel: "gpt-5-mini",
+	openaiModel: "gpt-4o-mini",
 	openaiTemperature: 0.2,
 	openaiMaxTokens: 4080,
 };
