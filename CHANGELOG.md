@@ -8,82 +8,86 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
-## [1.3.0] - 2025-08-13
+## [1.4.0] - 2025-08-14
 
 ### Added
 
-- Pinning system for files in chat sessions via `ChatSessionService.ts` (pin, unpin, getPinned methods).
-- @mention support in chatbot composer for searching and pinning files, with dropdown menu.
-- New AI tool `follow_links` in `AiTools.ts` to extract and follow internal Markdown links for better context gathering.
-- Handling for file creations and proposals in `AiService.ts` and `ChatbotView.ts`, including `handleCreations` and `handleProposals` methods.
-- Thinking state with animation in chatbot messages during AI processing.
-- Fullscreen diff modal with toggle between rendered Markdown and raw text views in `DiffModal.ts`.
-- Internal link fixing in rendered content for both chatbot messages and diff modal.
-- Status updates during tool usage in streaming (e.g., "Searching documents...").
-- Styles for pins, mention menu, thinking animation, and fullscreen diff modal in `styles.css`.
+- **Multi-provider AI support**: Full support for OpenAI, Anthropic (Claude), Google (Gemini), and Ollama (local models)
+  - New `AiProviderFactory` service for creating AI provider instances
+  - Provider-specific model configurations with support for tools and streaming
+  - Automatic provider testing and connection validation
+- **Enhanced Chat Interface**: Complete redesign of the chatbot UI with modern components
+  - `ChatInput` component with mention handling and provider selection
+  - `MessageRenderer` component for consistent message display with streaming support
+  - `LinkHandler` component for proper internal link resolution
+  - `SessionManager` component for session and pin management
+  - Real-time provider status indicators
+- **Responsive Design**: Adaptive UI that works across different screen sizes
+  - JavaScript-based responsive detection with CSS classes
+  - Optimized layouts for narrow, very-narrow, and extremely-narrow viewports
+  - Mobile-friendly input controls and touch interactions
+- **Improved File Operations**: Enhanced content editing and creation workflows
+  - Editable diff modal allowing content modification before applying changes
+  - Better file creation handling with automatic folder structure
+  - Enhanced proposal and creation handling in both chat and write modes
+- **Advanced Mention System**: Smart file referencing with autocomplete
+  - File search and filtering within team docs
+  - Visual mention menu with keyboard navigation
+  - Automatic pinning of mentioned files
 
 ### Changed
 
-- Bumped version to `1.3.0` in `manifest.json`, `package.json`, and `version.json`.
-- Updated system prompts in `AiService.ts` and `ChatbotView.ts` to emphasize tool usage, link following, and pinned files.
-- Refactored `streamChat` in `AiService.ts` to handle multi-step tool calls with `onStepFinish`, collect all tool results, and generate follow-up text summarizing actions without content.
-- Removed non-streaming `chat` method from `AiService.ts`.
-- Updated `propose_edit` and `create_doc` tools in `AiTools.ts` to require and return full content, with improved logging and error handling.
-- Increased snippet sizes in `search_docs` and added try-catch to `read_doc`.
-- Streamlined write mode in `ChatbotView.ts`: removed `EditTargetModal`, integrated edit generation via tools, handled proposals/creations directly.
-- UI tweaks in `ChatbotView.ts`: reordered header elements, added composer input handling for mentions.
-- Enhanced diff modal to be fullscreen with better rendering and link handling.
+- **Settings Migration**: Automatic migration from legacy OpenAI-only settings to multi-provider configuration
+  - Legacy `openaiApiKey` and `openaiModel` settings preserved for backward compatibility
+  - New nested `ai` settings structure with provider-specific configurations
+- **Improved Error Handling**: Better error messages and fallback mechanisms
+  - Provider-specific error handling and status reporting
+  - Graceful degradation when providers are unavailable
+- **Enhanced Markdown Rendering**: Better support for internal links and wiki-style references
+  - Improved link extraction and processing
+  - Better handling of file references in AI responses
+- **Streamlined Tool Integration**: Updated AI tools for better compatibility across providers
+  - Google-compatible tool definitions with simplified return types
+  - Enhanced tool result processing and error handling
 
-### Fixed
+### Dependencies
 
-- Ensured proposals and creations are properly captured and applied even in multi-step tool chains.
-- Fixed potential empty responses by always generating a follow-up summary.
-- Improved reliability of file operations with folder creation and existence checks.
+- Added `@ai-sdk/anthropic` ^2.0.4 for Claude models support
+- Added `@ai-sdk/google` ^2.0.6 for Gemini models support
+- Added `@ai-sdk/provider` ^2.0.0 and `@ai-sdk/provider-utils` ^3.0.3 for provider abstraction
+- Updated `@ai-sdk/openai` to ^2.0.11
+- Updated `ai` to ^5.0.11
+- Updated `zod` to ^4.0.17
 
-## [1.2.1] - 2025-08-12
+### Technical Improvements
 
-### Changed
+- **Modular Architecture**: Separated concerns into focused components and services
+  - Clean separation between UI components, AI services, and business logic
+  - Improved maintainability and testability
+- **Custom Ollama Provider**: Complete implementation of Ollama provider with streaming support
+  - Full compatibility with the AI SDK provider interface
+  - Support for local model management and configuration
+- **Better Type Safety**: Enhanced TypeScript definitions and interfaces
+  - Strong typing for provider configurations and model settings
+  - Improved error handling with typed exceptions
 
-- Streamed AI response generation for file edits in write mode, displaying progress in the chat interface.
-- Removed redundant path check in edit application (assumed handled upstream).
-- Simplified success notice for applied edits.
-- Updated error notice text for generate & apply failures.
+### UI/UX Improvements
 
-### Fixed
+- **Modern Interface Design**: Updated styling with CSS custom properties and better visual hierarchy
+- **Accessibility**: Improved keyboard navigation and screen reader support
+- **Performance**: Optimized rendering and reduced unnecessary re-renders
+- **Visual Feedback**: Better loading states, status indicators, and user feedback
 
-- Ensured streamed edit responses are properly rendered as Markdown and handled empty responses via fallback.
+### Bug Fixes
 
-## [1.2.0] - 2025-08-12
+- Fixed internal link resolution in AI responses
+- Improved file path handling across different operating systems
+- Better error recovery when AI providers are temporarily unavailable
+- Fixed mention menu positioning and interaction issues
 
-### Added
+### Chore
 
-- AI integration with OpenAI for chatbot functionality, including chat and write modes.
-- New services: `AiService` for handling AI interactions, `MarkdownIndexService` for indexing and searching Markdown files, `ChatSessionService` for managing chat sessions.
-- New UI components: `ChatbotView` for the main chatbot interface, `ChatSessionsModal` for session management, `DiffModal` for reviewing changes, `EditTargetModal` for selecting edit targets.
-- New tools in `AiTools.ts` for searching docs, reading docs, proposing edits, and creating docs.
-- OpenAI settings: API key, model, temperature, and max tokens in `SettingsTab.ts`.
-- Ribbon icon and command for opening the Team Docs Chatbot.
-- Streaming support for AI responses in chatbot.
-- Sources panel in chatbot to display referenced files.
-- Proposal review and application for write mode edits, with reservation checks.
-- Retry logic with exponential backoff for git commands in `GitService.ts` to handle transient failures.
-
-### Changed
-
-- Bumped version to `1.2.0` in `manifest.json`, `package.json`, and `version.json`.
-- Updated `.gitignore` to include `dist` and `.DS_Store`.
-- Enhanced file handling in `FileHandlers.ts` with additional reservation syncs before reverting changes.
-- Registered chatbot view in `main.ts`.
-- Improved command manager to include open chatbot command.
-- Updated reservation manager with `git add -A` before commits and retries for push/fetch.
-- Changed activity feed refresh interval to 30 seconds in `TeamActivityFeed.ts`.
-- Extended UIManager with `openChatbot` method.
-- Added dependencies: `@ai-sdk/openai`, `ai`, `zod` in `package.json`.
-- Updated styles in `styles.css` for chatbot UI elements.
-
-### Fixed
-
-- Improved reliability of reservation syncing with retries in `EditReservationManager.ts`.
+- Bump version to 1.4.0 in `manifest.json`, `package.json`, and `version.json`
 
 ## [1.1.1] - 2025-08-09
 
@@ -109,7 +113,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Changed
 
 - `FileHandler.onFileModified()` and `FileHandler.onEditorChange()` in `src/handlers/FileHandlers.ts`:
-  - Online: preserve original behavior (sync/extend reservations, revert unauthorized edits, enforce read-only for others’ reservations).
+  - Online: preserve original behavior (sync/extend reservations, revert unauthorized edits, enforce read-only for others' reservations).
   - Offline: skip reservation sync/enforcement and do not revert edits.
 
 ### Tests
@@ -155,10 +159,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Initial setup (`chore: initial setup`)
 - Export stub properly to build (`chore: export stub properly to build`)
 
-[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.3.0...HEAD
-[1.3.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.3.0
-[1.2.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.1
-[1.2.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.2.0
+[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.4.0
 [1.1.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.1
 [1.1.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.0
 [1.0.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.0.0
