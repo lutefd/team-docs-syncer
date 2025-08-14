@@ -3,6 +3,178 @@ import { tool } from "ai";
 import type TeamDocsPlugin from "../../main";
 import { TFile } from "obsidian";
 
+/**
+ * Build Google-compatible tools with simplified return types
+ * Google AI doesn't support complex union types from 'as const'
+ */
+function buildGoogleCompatibleTools(plugin: TeamDocsPlugin) {
+	const teamRoot = plugin.settings.teamDocsPath;
+	const isInsideTeam = (p: string) =>
+		!!teamRoot && p.startsWith(teamRoot + "/");
+
+	return {
+		search_docs: tool({
+			description:
+				"Search markdown documents by title/frontmatter and return brief snippets.",
+			inputSchema: z.object({
+				query: z.string(),
+				k: z.number().int().min(1).max(10).optional(),
+			}),
+			execute: async ({ query, k = 5 }: { query: string; k?: number }) => {
+				const hits = plugin.markdownIndexService?.search(query, k) || [];
+				const results: Array<{
+					path: string;
+					title: string;
+					frontmatter?: any;
+					snippet?: string;
+				}> = [];
+				for (const h of hits) {
+					let snippet: string | undefined;
+					const file = plugin.app.vault.getAbstractFileByPath(h.path);
+					if (file instanceof TFile) {
+						try {
+							const txt = await plugin.app.vault.read(file);
+							snippet = txt.slice(0, 1400);
+						} catch {}
+					}
+					results.push({
+						path: h.path,
+						title: h.title,
+						frontmatter: h.frontmatter,
+						snippet,
+					});
+				}
+				return results;
+			},
+		}),
+
+		read_doc: tool({
+			description:
+				"Read full markdown content for a given path within the team docs folder.",
+			inputSchema: z.object({ path: z.string() }),
+			execute: async ({ path }: { path: string }) => {
+				if (!isInsideTeam(path)) return { error: "outside-sync-folder" };
+				const file = plugin.app.vault.getAbstractFileByPath(path);
+				if (!(file instanceof TFile)) return { error: "not-found" };
+				try {
+					const content = await plugin.app.vault.read(file);
+					return { path, content };
+				} catch {
+					return { error: "read-failed" };
+				}
+			},
+		}),
+
+		propose_edit: tool({
+			description:
+				"Indicate that you want to edit a file. You must provide the complete updated file content in the 'content' parameter. Read the file first using read_doc, then provide the full updated content here.",
+			inputSchema: z.object({
+				path: z.string().describe("Path to the file to edit"),
+				content: z
+					.string()
+					.describe(
+						"Complete updated file content - you must generate this based on the current content and requested changes"
+					),
+				instructions: z
+					.string()
+					.optional()
+					.describe("Optional editing instructions for the user"),
+			}),
+			execute: async ({
+				path,
+				content,
+				instructions,
+			}: {
+				path: string;
+				content: string;
+				instructions?: string;
+			}) => {
+				console.log("[propose_edit] Called with:", {
+					path,
+					contentLength: content?.length || 0,
+					instructions,
+				});
+
+				try {
+					if (!isInsideTeam(path)) {
+						console.log("[propose_edit] Path outside team folder:", path);
+						return { error: "outside-sync-folder" };
+					}
+
+					if (!content || content.trim().length === 0) {
+						console.log("[propose_edit] No content provided");
+						return { error: "no-content-provided" };
+					}
+
+					const result = {
+						ok: true,
+						path,
+						content,
+						instructions: instructions || "",
+					};
+
+					console.log("[propose_edit] Returning result:", {
+						ok: result.ok,
+						path: result.path,
+						contentLength: result.content.length,
+						instructions: result.instructions,
+					});
+
+					return result;
+				} catch (error) {
+					console.error("[propose_edit] Error:", error);
+					return { error: "execution-failed" };
+				}
+			},
+		}),
+
+		create_doc: tool({
+			description:
+				"Create a new markdown file within the team docs folder. You must provide the complete file content in the 'content' parameter.",
+			inputSchema: z.object({
+				path: z
+					.string()
+					.describe("Full path including .md under the team docs folder"),
+				content: z
+					.string()
+					.describe(
+						"Complete file content - you must generate appropriate content for this new file"
+					),
+				instructions: z
+					.string()
+					.optional()
+					.describe("Optional instructions about what was created"),
+			}),
+			execute: async ({
+				path,
+				content,
+				instructions,
+			}: {
+				path: string;
+				content: string;
+				instructions?: string;
+			}) => {
+				if (!isInsideTeam(path)) return { error: "outside-sync-folder" };
+				const existing = plugin.app.vault.getAbstractFileByPath(path);
+				if (existing) return { error: "already-exists", path };
+
+				const folderPath = path.split("/").slice(0, -1).join("/");
+				try {
+					await plugin.app.vault.createFolder(folderPath);
+				} catch {}
+
+				const file = await plugin.app.vault.create(path, content);
+				return {
+					ok: true,
+					path: file.path,
+					content,
+					instructions: instructions || "",
+				};
+			},
+		}),
+	};
+}
+
 export function buildTools(plugin: TeamDocsPlugin) {
 	const teamRoot = plugin.settings.teamDocsPath;
 	const isInsideTeam = (p: string) =>
