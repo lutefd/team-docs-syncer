@@ -3,16 +3,18 @@ import { App, Modal, Setting, MarkdownRenderer, Component } from "obsidian";
 export class DiffModal extends Modal {
 	private hasResult = false;
 	private component: Component;
+	private editedContent: string;
 
 	constructor(
 		app: App,
 		private filePath: string,
 		private original: string,
 		private proposed: string,
-		private onCloseResult?: (confirmed: boolean) => void
+		private onCloseResult?: (confirmed: boolean, editedContent?: string) => void
 	) {
 		super(app);
 		this.component = new Component();
+		this.editedContent = proposed;
 	}
 
 	async onOpen(): Promise<void> {
@@ -43,7 +45,7 @@ export class DiffModal extends Modal {
 		left.createEl("h4", { text: "Current" });
 		const leftContainer = left.createDiv({ cls: "diff-content-container" });
 
-		right.createEl("h4", { text: "Proposed" });
+		right.createEl("h4", { text: "Proposed (Editable)" });
 		const rightContainer = right.createDiv({ cls: "diff-content-container" });
 
 		const leftRendered = leftContainer.createDiv({ cls: "diff-rendered" });
@@ -54,11 +56,18 @@ export class DiffModal extends Modal {
 		leftRaw.textContent = this.original;
 
 		const rightRendered = rightContainer.createDiv({ cls: "diff-rendered" });
-		const rightRaw = rightContainer.createEl("pre", {
-			cls: "diff-pre",
-			attr: { style: "display: none;" },
+		const rightTextarea = rightContainer.createEl("textarea", {
+			cls: "diff-textarea",
+			attr: {
+				style: "display: none;",
+				placeholder: "Edit the proposed content...",
+			},
 		});
-		rightRaw.textContent = this.proposed;
+		rightTextarea.value = this.proposed;
+
+		rightTextarea.addEventListener("input", () => {
+			this.editedContent = rightTextarea.value;
+		});
 
 		try {
 			await MarkdownRenderer.render(
@@ -74,34 +83,41 @@ export class DiffModal extends Modal {
 			leftRendered.textContent = this.original;
 		}
 
-		try {
-			await MarkdownRenderer.render(
-				this.app,
-				this.proposed,
-				rightRendered,
-				this.filePath,
-				this.component
-			);
-			this.fixInternalLinks(rightRendered);
-		} catch (e) {
-			console.warn("[DiffModal] Failed to render proposed markdown:", e);
-			rightRendered.textContent = this.proposed;
-		}
+		const updateRenderedView = async () => {
+			rightRendered.empty();
+			try {
+				await MarkdownRenderer.render(
+					this.app,
+					this.editedContent,
+					rightRendered,
+					this.filePath,
+					this.component
+				);
+				this.fixInternalLinks(rightRendered);
+			} catch (e) {
+				console.warn("[DiffModal] Failed to render proposed markdown:", e);
+				rightRendered.textContent = this.editedContent;
+			}
+		};
 
-		const showRendered = () => {
+		await updateRenderedView();
+
+		const showRendered = async () => {
+			await updateRenderedView();
 			leftRendered.style.display = "block";
 			rightRendered.style.display = "block";
 			leftRaw.style.display = "none";
-			rightRaw.style.display = "none";
+			rightTextarea.style.display = "none";
 			markdownBtn.addClass("is-active");
 			rawBtn.removeClass("is-active");
 		};
 
 		const showRaw = () => {
+			rightTextarea.value = this.editedContent;
 			leftRendered.style.display = "none";
 			rightRendered.style.display = "none";
 			leftRaw.style.display = "block";
-			rightRaw.style.display = "block";
+			rightTextarea.style.display = "block";
 			markdownBtn.removeClass("is-active");
 			rawBtn.addClass("is-active");
 		};
@@ -118,7 +134,7 @@ export class DiffModal extends Modal {
 					.setCta()
 					.onClick(() => {
 						this.hasResult = true;
-						this.onCloseResult?.(true);
+						this.onCloseResult?.(true, this.editedContent);
 						this.close();
 					})
 			)
