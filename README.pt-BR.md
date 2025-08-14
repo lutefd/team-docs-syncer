@@ -81,7 +81,7 @@ Este plugin do Obsidian adiciona recursos leves de colaboração sobre o Git, in
 
 **Recomendado (Fácil)**
 
-1. Vá para a página **[Releases](./releases)**.
+1. Vá para a página **[Releases](https://github.com/lutefd/team-docs-syncer/releases/)**.
 2. Baixe o `.zip` mais recente.
 3. Extraia para:
 
