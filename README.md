@@ -81,7 +81,7 @@ It’s **free**, **auditable**, and works well for small to mid-sized teams comf
 
 **Recommended (Easy)**
 
-1. Go to the **[Releases](./releases)** page of this repository.
+1. Go to the **[Releases](https://github.com/lutefd/team-docs-syncer/releases/)** page of this repository.
 2. Download the latest `.zip` file.
 3. Extract it into your vault’s `.obsidian/plugins/` folder:
    ```
