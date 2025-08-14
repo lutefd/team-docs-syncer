@@ -65,7 +65,20 @@ export default class TeamDocsPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loadedData = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
+
+		if (!this.settings.ai) {
+			this.settings.ai = DEFAULT_SETTINGS.ai;
+
+			if (loadedData?.openaiApiKey) {
+				this.settings.ai.openaiApiKey = loadedData.openaiApiKey;
+			}
+		}
+
+		if (!loadedData?.ai) {
+			await this.saveSettings();
+		}
 	}
 
 	async saveSettings() {
