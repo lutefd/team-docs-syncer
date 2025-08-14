@@ -167,9 +167,15 @@ export class ChatbotView extends ItemView {
 		}
 		const q = at.token.slice(1);
 		console.log("[Chatbot] Search query:", q);
-		const results = (this.plugin.markdownIndexService?.search(q, 8) || []).map(
-			(r) => r.path
-		);
+		const searchResults = this.plugin.markdownIndexService?.search(q, 8) || [];
+		const uniquePaths = new Set<string>();
+		const results = searchResults
+			.filter((r) => {
+				if (uniquePaths.has(r.path)) return false;
+				uniquePaths.add(r.path);
+				return true;
+			})
+			.map((r) => r.path);
 		console.log("[Chatbot] Search results:", results);
 		this.mentionItems = results;
 		this.mentionIndex = 0;
@@ -245,7 +251,10 @@ export class ChatbotView extends ItemView {
 		const picked = this.mentionItems[this.mentionIndex];
 		const before = val.slice(0, at.start);
 		const after = val.slice(at.end);
-		const inserted = `@${picked} `;
+
+		const filename = picked.split("/").pop() || picked;
+		const inserted = `[[${picked}|${filename}]] `;
+
 		this.inputEl.value = before + inserted + after;
 		const newCaret = (before + inserted).length;
 		this.inputEl.setSelectionRange(newCaret, newCaret);
@@ -360,12 +369,12 @@ export class ChatbotView extends ItemView {
 							pinned.length > 0
 								? "The user has pinned specific files - search these first, but also search for additional relevant files."
 								: "Use search_docs to find all relevant files."
-					  } If search_docs snippets are insufficient, use read_doc to get full file content. When you find documents with internal links [[path]] to other relevant documents, use follow_links tool to gather comprehensive context by following those references (up to 5 documents deep). Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`
+					  } If search_docs snippets are insufficient, use read_doc to get full file content. IMPORTANT: After reading any document with read_doc, use the follow_links tool on that document's content to gather comprehensive context from linked documents (up to 5 documents deep) if the link is not found in the search_docs and it's relevant. Do not skip this step even if you think the document doesn't contain links. Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`
 					: `You are a helpful assistant for editing team documents. CRITICAL: You MUST use search_docs tool to read actual file content before making any edits. Never guess file contents. ${
 							pinned.length > 0
 								? "Search pinned files first, then search for additional context if needed."
 								: "Use search_docs to understand all relevant context."
-					  } Use read_doc for full content when needed. When documents contain internal links [[path]] to related files, use follow_links tool to gather comprehensive context before making edits. 
+					  } Use read_doc for full content when needed. IMPORTANT: After reading any document with read_doc, ALWAYS use the follow_links tool on that document's content to gather comprehensive context from linked documents. Do not skip this step even if you think the document doesn't contain links.
 
 IMPORTANT: For edits, use propose_edit tool to specify which file to edit and what changes to make. For new files, use create_doc tool to specify the path and content. DO NOT output file content in your response - the tools handle the actual file operations. After using tools, only provide a brief summary of what was done and reference files using [[path/to/file.md|filename]] format for clickable links.`,
 		};
@@ -716,37 +725,136 @@ Apply the changes I requested while keeping the existing structure and style int
 			text: "Sources",
 			cls: "sources-title",
 		});
-		if (paths.length === 0) {
+
+		const uniquePaths = Array.from(new Set(paths.filter((p) => p)));
+
+		if (uniquePaths.length === 0) {
 			this.sourcesEl.createEl("div", { text: "No relevant files found." });
 			return;
 		}
+
+		console.log("[Chatbot] Displaying sources:", uniquePaths);
+
 		const list = this.sourcesEl.createEl("ul", { cls: "sources-list" });
-		for (const p of paths) {
+		for (const p of uniquePaths) {
 			const li = list.createEl("li");
-			const a = li.createEl("a", { text: p, cls: "internal-link" });
-			a.onclick = () => this.openFile(p);
+			const filename = p.split("/").pop() || p;
+			const a = li.createEl("a", { text: filename, cls: "internal-link" });
+			a.dataset.href = p;
+			a.onclick = (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.openFile(p);
+			};
 		}
 	}
 
 	private async openFile(filePath: string): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		if (file) {
-			await this.app.workspace.openLinkText(filePath, "", false);
+		console.log("[Chatbot] Opening file:", filePath);
+		try {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file) {
+				await this.app.workspace.openLinkText(filePath, "", false);
+				console.log("[Chatbot] File opened successfully");
+			} else {
+				console.warn("[Chatbot] File not found:", filePath);
+				new Notice(`File not found: ${filePath}`);
+			}
+		} catch (error) {
+			console.error("[Chatbot] Error opening file:", error);
+			new Notice(`Error opening file: ${filePath}`);
 		}
 	}
 
 	private fixInternalLinks(container: HTMLElement) {
-		const links = container.querySelectorAll("a.internal-link");
+		const links = container.querySelectorAll("a.internal-link, a.wiki-link");
 		links.forEach((link) => {
 			const href = link.getAttribute("data-href") || link.getAttribute("href");
 			if (href) {
 				link.removeAttribute("href");
+
 				(link as HTMLElement).onclick = (e) => {
 					e.preventDefault();
+					e.stopPropagation();
+					console.log("[Chatbot] Link clicked:", href);
 					this.openFile(href);
 				};
+
 				link.addClass("internal-link");
+				link.addClass("is-unresolved");
+
+				const linkText = link.textContent || "";
+				if (!linkText.includes("|") && !linkText.includes(" ")) {
+					const filename = href.split("/").pop() || href;
+					if (linkText !== filename) {
+						link.textContent = filename;
+					}
+				}
 			}
 		});
+
+		const wikiLinkRegex = /\[\[(.*?)(?:\|(.*?))?\]\]/g;
+		const textNodes = this.getTextNodes(container);
+
+		textNodes.forEach((node) => {
+			if (!node.textContent) return;
+
+			const text = node.textContent;
+			if (!wikiLinkRegex.test(text)) return;
+
+			wikiLinkRegex.lastIndex = 0;
+
+			let lastIndex = 0;
+			let match;
+			const fragment = document.createDocumentFragment();
+
+			while ((match = wikiLinkRegex.exec(text)) !== null) {
+				if (match.index > lastIndex) {
+					fragment.appendChild(
+						document.createTextNode(text.substring(lastIndex, match.index))
+					);
+				}
+
+				const path = match[1];
+				const displayName = match[2] || path.split("/").pop() || path;
+
+				const link = document.createElement("a");
+				link.textContent = displayName;
+				link.classList.add("internal-link");
+				link.classList.add("is-unresolved");
+				link.dataset.href = path;
+
+				link.onclick = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					this.openFile(path);
+				};
+
+				fragment.appendChild(link);
+				lastIndex = wikiLinkRegex.lastIndex;
+			}
+
+			if (lastIndex < text.length) {
+				fragment.appendChild(
+					document.createTextNode(text.substring(lastIndex))
+				);
+			}
+
+			if (lastIndex > 0 && node.parentNode) {
+				node.parentNode.replaceChild(fragment, node);
+			}
+		});
+	}
+
+	private getTextNodes(node: Node): Text[] {
+		const textNodes: Text[] = [];
+		const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+
+		let currentNode;
+		while ((currentNode = walker.nextNode())) {
+			textNodes.push(currentNode as Text);
+		}
+
+		return textNodes;
 	}
 }
