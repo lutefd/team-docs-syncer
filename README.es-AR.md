@@ -78,7 +78,7 @@ Es **gratis**, **auditable** y funciona bien para equipos pequeños y medianos q
 
 **Recomendado (Fácil)**
 
-1. Ir a la página **[Releases](./releases)**.
+1. Ir a la página **[Releases](https://github.com/lutefd/team-docs-syncer/releases/)**.
 2. Descargar el `.zip` más reciente.
 3. Extraerlo en:
 
