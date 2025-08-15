@@ -86,6 +86,19 @@ export class GitService {
 		try {
 			return await execAsync(`git ${command}`, { cwd });
 		} catch (error) {
+			if (
+				command.includes("commit") &&
+				error.message.includes("gpg failed to sign the data")
+			) {
+				try {
+					const retryCommand = command.includes("--no-gpg-sign")
+						? command
+						: command.replace("commit", "commit --no-gpg-sign");
+					return await execAsync(`git ${retryCommand}`, { cwd });
+				} catch (retryError) {
+					throw new Error(retryError.message);
+				}
+			}
 			throw new Error(error.message);
 		}
 	}
