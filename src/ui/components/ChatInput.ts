@@ -7,6 +7,7 @@ export interface ChatInputOptions {
 	onSend?: (message: string, providerSelection?: ProviderSelection) => void;
 	onProviderChange?: (selection: ProviderSelection) => void;
 	placeholder?: string;
+	mode?: "compose" | "write" | "chat";
 }
 
 /**
@@ -45,6 +46,7 @@ export class ChatInput extends Component {
 
 		this.providerChooser = new ProviderChooser(providerContainer, {
 			settings: this.plugin.settings,
+			mode: this.options.mode,
 			onSelectionChange: (selection) => {
 				this.currentProviderSelection = selection;
 				console.log("[ChatInput] Provider selection changed:", selection);
@@ -129,8 +131,10 @@ export class ChatInput extends Component {
 	}
 
 	private handleSend(): void {
-		const message = this.rawContent.trim();
+		const message = (this.inputEl.value || "").trim();
 		if (!message) return;
+
+		console.log("[ChatInput] Sending message:", message);
 
 		this.inputEl.value = "";
 		this.rawContent = "";
@@ -197,6 +201,14 @@ export class ChatInput extends Component {
 	 */
 	public refreshProviders(): void {
 		this.providerChooser.refresh();
+	}
+
+	/**
+	 * Update mode and refresh provider models
+	 */
+	public updateMode(mode: "compose" | "write" | "chat"): void {
+		this.options.mode = mode;
+		this.providerChooser.updateMode(mode);
 	}
 
 	/**
