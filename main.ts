@@ -76,6 +76,29 @@ export default class TeamDocsPlugin extends Plugin {
 			}
 		}
 
+		if (
+			loadedData?.ai?.ollamaModels &&
+			Array.isArray(loadedData.ai.ollamaModels)
+		) {
+			const oldModels = loadedData.ai.ollamaModels;
+
+			if (!this.settings.ai.ollamaComposeModels) {
+				this.settings.ai.ollamaComposeModels = [];
+			}
+			if (!this.settings.ai.ollamaChatModels) {
+				this.settings.ai.ollamaChatModels = [];
+			}
+
+			if (this.settings.ai.ollamaComposeModels.length === 0) {
+				this.settings.ai.ollamaComposeModels = [...oldModels];
+			}
+			if (this.settings.ai.ollamaChatModels.length === 0) {
+				this.settings.ai.ollamaChatModels = [...oldModels];
+			}
+
+			await this.saveSettings();
+		}
+
 		if (!loadedData?.ai) {
 			await this.saveSettings();
 		}
