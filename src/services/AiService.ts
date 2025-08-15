@@ -5,7 +5,7 @@ import { buildTools } from "../tools/AiTools";
 import { AiProviderFactory } from "./AiProviderFactory";
 import { AiProvider } from "../types/AiProvider";
 
-export type Mode = "chat" | "write";
+export type Mode = "compose" | "write" | "chat";
 
 export interface ChatResult {
 	text: string;
@@ -60,23 +60,43 @@ export class AiService {
 		const kTemperature = this.plugin.settings.openaiTemperature ?? 0.2;
 		const teamRoot = this.plugin.settings.teamDocsPath;
 
-		let tools = buildTools(this.plugin);
+		let tools =
+			mode === "compose" || mode === "write"
+				? buildTools(this.plugin)
+				: undefined;
 
 		const baseInstructions =
-			mode === "chat"
+			mode === "compose"
 				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use search_docs/read_doc to find information. If users ask about editing files, use propose_edit tool - first read the current content with read_doc, then provide the complete updated content in the propose_edit tool. Be concise and cite files using [[path/to/file.md|filename]] format.`
-				: `You help edit Markdown files strictly inside (${teamRoot}). For edits: 
+				: mode === "write"
+				? `You help edit Markdown files strictly inside (${teamRoot}). For edits: 
 1. First use read_doc to get current content
 2. Generate complete updated content based on the user's request  
 3. Use propose_edit with the full updated content
-For new files, use create_doc with complete content. IMPORTANT: Do NOT include file content in your responses. After using tools, provide only a brief summary of what was done and reference files using [[path/to/file.md|filename]] format. The tools handle all file operations - your job is just to report what happened.`;
+For new files, use create_doc with complete content. IMPORTANT: Do NOT include file content in your responses. After using tools, provide only a brief summary of what was done and reference files using [[path/to/file.md|filename]] format. The tools handle all file operations - your job is just to report what happened.`
+				: `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Answer questions based on the provided context and attached file contents. Be concise and cite files using [[path/to/file.md|filename]] format. You do NOT have access to tools for searching or editing files.`;
 
-		const workflowEnhancements = `\n\nIMPORTANT WORKFLOW:
+		const isOllama = provider === "ollama";
+		const ollamaEnhancements =
+			isOllama && (mode === "compose" || mode === "write")
+				? `\n\nOLLAMA SPECIFIC INSTRUCTIONS:
+- You MUST use the available tools to search and read documents
+- NEVER attempt to answer questions about specific files without first using search_docs and read_doc
+- ALWAYS start by using search_docs to find relevant documents
+- ALWAYS use read_doc to read the full content before making any edits or providing detailed information
+- Tool usage is MANDATORY - do not try to answer from memory or assumptions
+- Follow this exact sequence: search_docs → read_doc → (propose_edit if editing or create_doc if creating) → provide answer`
+				: "";
+
+		const workflowEnhancements =
+			mode === "compose" || mode === "write"
+				? `\n\nIMPORTANT WORKFLOW:
 - ALWAYS search first with search_docs to understand available documents
 - ALWAYS read documents with read_doc before making any edits or answering questions about specific files
 - If search results don't provide enough context, use read_doc to get full content
 - Never guess file contents - always read first
-- For reasoning models: wrap your thinking process in <think> tags, then provide your final answer`;
+- For reasoning models: wrap your thinking process in <think> tags, then provide your final answer${ollamaEnhancements}`
+				: `\n\nIMPORTANT: Answer based on the provided context and any attached file contents. Be helpful and informative while staying within the scope of the team documentation.`;
 
 		const boundary: ModelMessage = {
 			role: "system",
@@ -155,11 +175,21 @@ For new files, use create_doc with complete content. IMPORTANT: Do NOT include f
 								| undefined;
 							console.log("[AiService] create_doc result:", r);
 							if (r?.ok && r?.path && r?.content) {
-								creations.push({ path: r.path, content: r.content });
-								console.log("[AiService] Added creation:", {
-									path: r.path,
-									contentLength: r.content.length,
-								});
+								const existingCreation = creations.find(
+									(c) => c.path === r.path
+								);
+								if (!existingCreation) {
+									creations.push({ path: r.path, content: r.content });
+									console.log("[AiService] Added creation:", {
+										path: r.path,
+										contentLength: r.content.length,
+									});
+								} else {
+									console.log(
+										"[AiService] Skipping duplicate creation:",
+										r.path
+									);
+								}
 							}
 						}
 					}
@@ -246,9 +276,7 @@ For new files, use create_doc with complete content. IMPORTANT: Do NOT include f
 			) {
 				let cleanChunk = chunk
 					.replace(/<finalAnswer>/g, "")
-					.replace(/<\/finalAnswer>/g, "")
-					.replace(/<think>/g, "")
-					.replace(/<\/think>/g, "");
+					.replace(/<\/finalAnswer>/g, "");
 
 				if (cleanChunk) {
 					text += cleanChunk;

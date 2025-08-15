@@ -31,12 +31,14 @@ export interface AiProviderSettings {
 	anthropicApiKey: string;
 
 	ollamaBaseUrl: string;
-	ollamaModels: string[];
+	ollamaComposeModels: string[];
+	ollamaChatModels: string[];
 
 	googleApiKey: string;
 
 	lastUsedProvider?: AiProvider;
 	lastUsedModel?: string;
+	lastUsedMode?: "chat" | "compose" | "write";
 }
 
 export interface ChatSession {
@@ -52,6 +54,7 @@ export const DEFAULT_AI_PROVIDER_SETTINGS: AiProviderSettings = {
 	openaiApiKey: "",
 	anthropicApiKey: "",
 	ollamaBaseUrl: "http://localhost:11434",
-	ollamaModels: ["llama3.2:3b", "gemma2:9b"],
+	ollamaComposeModels: [],
+	ollamaChatModels: [],
 	googleApiKey: "",
 };

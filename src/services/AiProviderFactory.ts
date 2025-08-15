@@ -16,7 +16,10 @@ export class AiProviderFactory {
 	/**
 	 * Get available models for a specific provider
 	 */
-	getAvailableModels(provider: AiProvider): ModelConfig[] {
+	getAvailableModels(
+		provider: AiProvider,
+		mode?: "compose" | "write" | "chat"
+	): ModelConfig[] {
 		switch (provider) {
 			case AiProvider.OPENAI:
 				return this.settings.ai.openaiApiKey
@@ -29,11 +32,24 @@ export class AiProviderFactory {
 					: [];
 
 			case AiProvider.OLLAMA:
-				return this.settings.ai.ollamaModels.map((modelId) => ({
+				let ollamaModels: string[];
+				if (mode === "compose" || mode === "write") {
+					ollamaModels = this.settings.ai.ollamaComposeModels || [];
+				} else if (mode === "chat") {
+					ollamaModels = this.settings.ai.ollamaChatModels || [];
+				} else {
+					ollamaModels = [
+						...(this.settings.ai.ollamaComposeModels || []),
+						...(this.settings.ai.ollamaChatModels || []),
+					];
+				}
+
+				const uniqueModels = [...new Set(ollamaModels)];
+				return uniqueModels.map((modelId) => ({
 					id: modelId,
 					name: modelId,
 					provider: AiProvider.OLLAMA,
-					supportsTools: true,
+					supportsTools: mode === "compose" || mode === "write",
 					supportsStreaming: true,
 				}));
 
@@ -50,7 +66,7 @@ export class AiProviderFactory {
 	/**
 	 * Get all available providers with their models
 	 */
-	getAvailableProviders(): ProviderConfig[] {
+	getAvailableProviders(mode?: "compose" | "write" | "chat"): ProviderConfig[] {
 		const providers: ProviderConfig[] = [];
 
 		if (this.settings.ai.openaiApiKey) {
@@ -71,12 +87,13 @@ export class AiProviderFactory {
 
 		if (
 			this.settings.ai.ollamaBaseUrl &&
-			this.settings.ai.ollamaModels.length > 0
+			(this.settings.ai.ollamaComposeModels.length > 0 ||
+				this.settings.ai.ollamaChatModels.length > 0)
 		) {
 			providers.push({
 				provider: AiProvider.OLLAMA,
 				baseUrl: this.settings.ai.ollamaBaseUrl,
-				models: this.getAvailableModels(AiProvider.OLLAMA),
+				models: this.getAvailableModels(AiProvider.OLLAMA, mode),
 			});
 		}
 
@@ -127,7 +144,8 @@ export class AiProviderFactory {
 			case AiProvider.OLLAMA:
 				return (
 					!!this.settings.ai.ollamaBaseUrl?.trim() &&
-					this.settings.ai.ollamaModels.length > 0
+					(this.settings.ai.ollamaChatModels.length > 0 ||
+						this.settings.ai.ollamaComposeModels.length > 0)
 				);
 
 			case AiProvider.GOOGLE:
