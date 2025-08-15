@@ -179,14 +179,34 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Ollama Models")
-			.setDesc("Comma-separated list of available Ollama models.")
+			.setName("Ollama Compose Models")
+			.setDesc(
+				"Comma-separated list of Ollama models for compose/write modes (with tools)."
+			)
 			.addText((text) =>
 				text
-					.setPlaceholder("llama3.2:3b, gemma2:9b")
-					.setValue(this.plugin.settings.ai.ollamaModels.join(", "))
+					.setPlaceholder("llama3.2:3b, gemma3:9b")
+					.setValue(this.plugin.settings.ai.ollamaComposeModels.join(", "))
 					.onChange(async (value) => {
-						this.plugin.settings.ai.ollamaModels = value
+						this.plugin.settings.ai.ollamaComposeModels = value
+							.split(",")
+							.map((m) => m.trim())
+							.filter((m) => m.length > 0);
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Ollama Chat Models")
+			.setDesc(
+				"Comma-separated list of Ollama models for chat mode (without tools)."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder("llama3.2:3b, gemma3:4b")
+					.setValue(this.plugin.settings.ai.ollamaChatModels.join(", "))
+					.onChange(async (value) => {
+						this.plugin.settings.ai.ollamaChatModels = value
 							.split(",")
 							.map((m) => m.trim())
 							.filter((m) => m.length > 0);
