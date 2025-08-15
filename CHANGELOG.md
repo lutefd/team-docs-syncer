@@ -8,6 +8,37 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [1.5.0] - 2025-08-15
+
+### Added
+
+- Automatic attachment of file contents for wiki-style mentions in messages via `FileContentExtractor.ts`.
+- Support for displaying AI thinking/reasoning in collapsible sections using <think> tags in `MessageRenderer.ts`.
+- onThoughts callback in `AiService.ts` for streaming thinking process.
+- Retry logic for AI tool executions in `AiTools.ts`.
+- Mode-specific prompts and workflows in `AiService.ts` for handling attached content, Ollama/Mistral enforcement, and thinking tags.
+- lastUsedMode tracking in settings for persisting user's preferred mode.
+- Styles for thinking sections in `styles.css`.
+
+### Changed
+
+- Updated README files to use full GitHub releases URLs.
+- Migration in `main.ts` for splitting old Ollama models into compose and chat categories.
+- Added dependency "@ai-sdk/openai-compatible": "^1.0.7" in `package.json`.
+- Updated mode toggle in `SessionManager.ts` to include "compose".
+- Mode-aware model filtering in `AiProviderFactory.ts` for Ollama (compose vs chat models).
+- Simplified Ollama provider in `OllamaProvider.ts` using OpenAI-compatible wrapper.
+- Enhanced tools in `AiTools.ts` to handle wiki links in paths.
+- Split Ollama model settings in `SettingsTab.ts` into compose and chat.
+- Integrated file content extraction in `ChatbotView.ts` for chat and compose modes.
+- Added updateMode to `ProviderChooser.ts` and `ChatInput.ts`.
+- Message processing in `MessageRenderer.ts` to handle and remove <attachedcontent> tags.
+- Streaming in `AiService.ts` to parse <think> and <finalAnswer> tags separately.
+
+### Fixed
+
+- Improved file path resolution for mentions and tools.
+
 ## [1.4.0] - 2025-08-14
 
 ### Added
@@ -159,7 +190,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Initial setup (`chore: initial setup`)
 - Export stub properly to build (`chore: export stub properly to build`)
 
-[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.4.0
 [1.1.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.1
 [1.1.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.0
