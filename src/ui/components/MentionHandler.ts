@@ -178,10 +178,8 @@ export class MentionHandler extends Component {
 		if (!this.inputEl) return;
 
 		const files = this.plugin.app.vault.getMarkdownFiles();
-		const teamDocsPath = this.plugin.settings.teamDocsPath;
 
 		this.mentionItems = files
-			.filter((file) => file.path.startsWith(teamDocsPath))
 			.map((file) => file.path)
 			.filter((path) => path.toLowerCase().includes(query))
 			.slice(0, 10);

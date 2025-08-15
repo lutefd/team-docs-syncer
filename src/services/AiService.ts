@@ -58,7 +58,6 @@ export class AiService {
 	}> {
 		const model = this.getModel(provider, modelId);
 		const kTemperature = this.plugin.settings.openaiTemperature ?? 0.2;
-		const teamRoot = this.plugin.settings.teamDocsPath;
 
 		let tools =
 			mode === "compose" || mode === "write"
@@ -67,14 +66,14 @@ export class AiService {
 
 		const baseInstructions =
 			mode === "compose"
-				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use search_docs/read_doc to find information. If users ask about editing files, use propose_edit tool - first read the current content with read_doc, then provide the complete updated content in the propose_edit tool. Be concise and cite files using [[path/to/file.md|filename]] format. Always use the same language the user is talking to you in, unless he/she is asking for a translation and specifies the language.`
+				? `You are a helpful assistant for Obsidian. You can search, read, and edit files across the entire vault. Use search_docs/read_doc to find information. If users ask about editing files, use propose_edit tool - first read the current content with read_doc, then provide the complete updated content in the propose_edit tool. Be concise and cite files using [[path/to/file.md|filename]] format. Always use the same language the user is talking to you in, unless he/she is asking for a translation and specifies the language.`
 				: mode === "write"
-				? `You help edit Markdown files strictly inside (${teamRoot}). For edits: 
+				? `You help edit Markdown files anywhere in the Obsidian vault. For edits: 
 1. First use read_doc to get current content
 2. Generate complete updated content based on the user's request  
 3. Use propose_edit with the full updated content
 For new files, use create_doc with complete content. IMPORTANT: Do NOT include file content in your responses. After using tools, provide only a brief summary of what was done and reference files using [[path/to/file.md|filename]] format. The tools handle all file operations - your job is just to report what happened.`
-				: `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Answer questions based on the provided context and attached file contents. Be concise and cite files using [[path/to/file.md|filename]] format. You do NOT have access to tools for searching or editing files.`;
+				: `You are a helpful assistant for Obsidian. You can access files across the entire vault. Answer questions based on the provided context and attached file contents. Be concise and cite files using [[path/to/file.md|filename]] format. You do NOT have access to tools for searching or editing files.`;
 
 		const isOllama = provider === "ollama";
 		const ollamaEnhancements =

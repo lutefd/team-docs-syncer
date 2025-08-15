@@ -114,7 +114,7 @@ export class ChatbotView extends ItemView {
 			onProviderChange: (selection) => {
 				this.currentProviderSelection = selection;
 			},
-			placeholder: "Ask about your team docs...",
+			placeholder: "Ask about your vault...",
 			mode: this.mode,
 		});
 
@@ -246,7 +246,7 @@ export class ChatbotView extends ItemView {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
-		const mentionRegex = /\[\[([^\]]+)\|?[^\]]*\]\]/g;
+		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
 		const mentions: string[] = [];
 		let match;
 
@@ -298,7 +298,7 @@ export class ChatbotView extends ItemView {
 
 		const system: ModelMessage = {
 			role: "system",
-			content: `You are a helpful assistant for a software team. 
+			content: `You are a helpful assistant for Obsidian vault management. You can work with files across the entire vault.
 
 CRITICAL WORKFLOW:
 1. Check if <attachedcontent> tags are present in the user message
@@ -354,8 +354,8 @@ MISTRAL-SPECIFIC ENFORCEMENT:
 
 ${
 	pinned.length > 0
-		? "The user has pinned specific files - search these first, but also search for additional relevant files."
-		: "Use search_docs to find all relevant files."
+		? "The user has pinned specific files - search these first, but also search for additional relevant files across the vault."
+		: "Use search_docs to find all relevant files across the entire vault."
 } If search_docs snippets are insufficient, use read_doc to get full file content. IMPORTANT: After reading any document with read_doc, if it has in it's content any links with the format [[path/to/file.md|filename]], use the follow_links tool on that document's content to gather comprehensive context from linked documents (up to 5 documents deep) if the link is not found in the search_docs and it's relevant. Do not skip this step even if you think the document doesn't contain links. Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`,
 		};
 
@@ -370,7 +370,7 @@ ${
 
 		const assistantPrep: ModelMessage = {
 			role: "system",
-			content: `Relevant files (by title/frontmatter):\n\n${contextBlurb}\n\nPinned files:\n${pinned
+			content: `Relevant files from vault search (by title/frontmatter):\n\n${contextBlurb}\n\nPinned files:\n${pinned
 				.map((p, i) => `#${i + 1} ${p}`)
 				.join("\n")}`,
 		};
@@ -432,7 +432,7 @@ ${
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
-		const mentionRegex = /\[\[([^\]]+)\|?[^\]]*\]\]/g;
+		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
 		const mentions: string[] = [];
 		let match;
 

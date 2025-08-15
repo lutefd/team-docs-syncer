@@ -19,29 +19,21 @@ export class MarkdownIndexService {
 		await this.rebuildIndex();
 		this.plugin.registerEvent(
 			this.app.vault.on("modify", (file) => {
-				if (
-					file instanceof TFile &&
-					this.isUnderTeamDocs(file) &&
-					file.extension === "md"
-				) {
+				if (file instanceof TFile && file.extension === "md") {
 					void this.updateFile(file);
 				}
 			})
 		);
 		this.plugin.registerEvent(
 			this.app.vault.on("create", (file) => {
-				if (
-					file instanceof TFile &&
-					this.isUnderTeamDocs(file) &&
-					file.extension === "md"
-				) {
+				if (file instanceof TFile && file.extension === "md") {
 					void this.updateFile(file);
 				}
 			})
 		);
 		this.plugin.registerEvent(
 			this.app.vault.on("delete", (file) => {
-				if (file instanceof TFile && this.isUnderTeamDocs(file)) {
+				if (file instanceof TFile) {
 					this.index.delete(file.path);
 				}
 			})
@@ -49,17 +41,11 @@ export class MarkdownIndexService {
 		this.initialized = true;
 	}
 
-	private isUnderTeamDocs(file: TFile): boolean {
-		const root = this.plugin.settings.teamDocsPath;
-		return !!root && file.path.startsWith(root + "/");
-	}
 
 	async rebuildIndex(): Promise<void> {
 		this.index.clear();
 		const mdFiles = this.app.vault.getMarkdownFiles();
-		const root = this.plugin.settings.teamDocsPath;
 		for (const f of mdFiles) {
-			if (!root || !f.path.startsWith(root + "/")) continue;
 			await this.updateFile(f);
 		}
 	}

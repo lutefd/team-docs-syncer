@@ -26,14 +26,10 @@ const withRetry = async <T>(
 };
 
 export function buildTools(plugin: TeamDocsPlugin) {
-	const teamRoot = plugin.settings.teamDocsPath;
-	const isInsideTeam = (p: string) =>
-		!!teamRoot && p.startsWith(teamRoot + "/");
-
 	return {
 		search_docs: tool({
 			description:
-				"Search markdown documents by title/frontmatter and return brief snippets. ALWAYS use this first to understand available documents before reading or editing.",
+				"Search markdown documents across the entire Obsidian vault by title/frontmatter and return brief snippets. ALWAYS use this first to understand available documents before reading or editing.",
 			inputSchema: z.object({
 				query: z.string(),
 				k: z.number().int().min(1).max(10).optional(),
@@ -49,6 +45,8 @@ export function buildTools(plugin: TeamDocsPlugin) {
 					}> = [];
 					for (const h of hits) {
 						let snippet: string | undefined;
+						console.log("[read_doc] Found hit:", h);
+						console.log("[read_doc] Searching for file:", h.path);
 						const file = plugin.app.vault.getAbstractFileByPath(h.path);
 						if (file instanceof TFile) {
 							try {
@@ -70,24 +68,35 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		read_doc: tool({
 			description:
-				"Read full markdown content for a given path within the team docs folder. ALWAYS read documents before proposing edits to understand current content.",
+				"Read full markdown content for a given path anywhere in the Obsidian vault. ALWAYS read documents before proposing edits to understand current content.",
 			inputSchema: z.object({ path: z.string() }),
 			execute: async ({ path }: { path: string }) => {
 				return withRetry(async () => {
 					let cleanPath = path;
 					const wikiLinkMatch = path.match(/^\[\[([^\]]+)\]\]$/);
 					if (wikiLinkMatch) {
-						cleanPath = wikiLinkMatch[1];
+						const linkContent = wikiLinkMatch[1];
+						const pipeIndex = linkContent.indexOf("|");
+						cleanPath =
+							pipeIndex !== -1
+								? linkContent.substring(0, pipeIndex)
+								: linkContent;
+
 						if (!cleanPath.endsWith(".md")) {
 							cleanPath += ".md";
 						}
-						if (!cleanPath.startsWith(teamRoot + "/")) {
-							cleanPath = teamRoot + "/" + cleanPath;
+
+						if (!cleanPath.includes("/")) {
+							const files = plugin.app.vault.getMarkdownFiles();
+							const foundFile = files.find(
+								(f) => f.basename === cleanPath.replace(".md", "")
+							);
+							if (foundFile) {
+								cleanPath = foundFile.path;
+							}
 						}
 					}
-
-					if (!isInsideTeam(cleanPath))
-						return { error: "outside-sync-folder" } as const;
+					console.log("[read_doc] Clean path:", cleanPath);
 					const file = plugin.app.vault.getAbstractFileByPath(cleanPath);
 					if (!(file instanceof TFile)) return { error: "not-found" } as const;
 					try {
@@ -102,7 +111,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		follow_links: tool({
 			description:
-				"Extract and follow internal document links from markdown content to gather comprehensive context. Use when you need to follow references to other documents.",
+				"Extract and follow internal document links from markdown content across the entire vault to gather comprehensive context. Use when you need to follow references to other documents.",
 			inputSchema: z.object({
 				content: z.string().describe("Markdown content to extract links from"),
 				currentPath: z.string().describe("Current document path for context"),
@@ -134,24 +143,29 @@ export function buildTools(plugin: TeamDocsPlugin) {
 						linkPath += ".md";
 					}
 
-					if (!linkPath.startsWith(teamRoot + "/")) {
+					if (!linkPath.includes("/")) {
+						const files = plugin.app.vault.getMarkdownFiles();
+						const foundFile = files.find(
+							(f) => f.basename === linkPath.replace(".md", "")
+						);
+						if (foundFile) {
+							linkPath = foundFile.path;
+						}
+					} else if (!plugin.app.vault.getAbstractFileByPath(linkPath)) {
 						const currentDir = currentPath.substring(
 							0,
 							currentPath.lastIndexOf("/")
 						);
 						const resolvedPath = currentDir + "/" + linkPath;
-
-						if (isInsideTeam(resolvedPath)) {
+						if (plugin.app.vault.getAbstractFileByPath(resolvedPath)) {
 							linkPath = resolvedPath;
-						} else if (isInsideTeam(teamRoot + "/" + linkPath)) {
-							linkPath = teamRoot + "/" + linkPath;
 						}
 					}
 
 					if (
-						isInsideTeam(linkPath) &&
 						linkPath !== currentPath &&
-						!links.includes(linkPath)
+						!links.includes(linkPath) &&
+						plugin.app.vault.getAbstractFileByPath(linkPath)
 					) {
 						links.push(linkPath);
 					}
@@ -187,7 +201,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		propose_edit: tool({
 			description:
-				"Indicate that you want to edit a file. CRITICAL: You MUST read the file first using read_doc, then provide the complete updated file content in the 'content' parameter. Never edit without reading first. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
+				"Indicate that you want to edit a file anywhere in the Obsidian vault. CRITICAL: You MUST read the file first using read_doc, then provide the complete updated file content in the 'content' parameter. Never edit without reading first. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
 			inputSchema: z.object({
 				path: z.string().describe("Path to the file to edit"),
 				content: z
@@ -224,17 +238,15 @@ export function buildTools(plugin: TeamDocsPlugin) {
 							if (!cleanPath.endsWith(".md")) {
 								cleanPath += ".md";
 							}
-							if (!cleanPath.startsWith(teamRoot + "/")) {
-								cleanPath = teamRoot + "/" + cleanPath;
+							if (!cleanPath.includes("/")) {
+								const files = plugin.app.vault.getMarkdownFiles();
+								const foundFile = files.find(
+									(f) => f.basename === cleanPath.replace(".md", "")
+								);
+								if (foundFile) {
+									cleanPath = foundFile.path;
+								}
 							}
-						}
-
-						if (!isInsideTeam(cleanPath)) {
-							console.log(
-								"[propose_edit] Path outside team folder:",
-								cleanPath
-							);
-							return { error: "outside-sync-folder" } as const;
 						}
 
 						if (!content || content.trim().length === 0) {
@@ -267,11 +279,11 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		create_doc: tool({
 			description:
-				"Create a new markdown file within the team docs folder. You must provide the complete file content in the 'content' parameter. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
+				"Create a new markdown file anywhere in the Obsidian vault. You must provide the complete file content in the 'content' parameter. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
 			inputSchema: z.object({
 				path: z
 					.string()
-					.describe("Full path including .md under the team docs folder"),
+					.describe("Full path including .md anywhere in the vault"),
 				content: z
 					.string()
 					.describe(
@@ -299,13 +311,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 						if (!cleanPath.endsWith(".md")) {
 							cleanPath += ".md";
 						}
-						if (!cleanPath.startsWith(teamRoot + "/")) {
-							cleanPath = teamRoot + "/" + cleanPath;
-						}
 					}
-
-					if (!isInsideTeam(cleanPath))
-						return { error: "outside-sync-folder" } as const;
 					const existing = plugin.app.vault.getAbstractFileByPath(cleanPath);
 					if (existing)
 						return { error: "already-exists", path: cleanPath } as const;
