@@ -15,14 +15,15 @@ import { MessageRenderer } from "./components/MessageRenderer";
 import { ChatInput } from "./components/ChatInput";
 import { LinkHandler } from "./components/LinkHandler";
 import { SessionManager } from "../managers/SessionManager";
+import { FileContentExtractor } from "../utils/FileContentExtractor";
 
 export const CHATBOT_VIEW = "team-docs-chatbot";
 
-type Mode = "chat" | "write";
+type Mode = "compose" | "write" | "chat";
 
 export class ChatbotView extends ItemView {
 	private plugin: TeamDocsPlugin;
-	private mode: Mode = "chat";
+	private mode: Mode = "compose";
 	private container!: HTMLElement;
 	private sourcesEl!: HTMLElement;
 	private messagesEl!: HTMLElement;
@@ -32,6 +33,7 @@ export class ChatbotView extends ItemView {
 	private chatInput: ChatInput;
 	private linkHandler: LinkHandler;
 	private sessionManager: SessionManager;
+	private fileContentExtractor: FileContentExtractor;
 	private currentProviderSelection?: ProviderSelection;
 	private resizeObserver?: ResizeObserver;
 
@@ -42,6 +44,8 @@ export class ChatbotView extends ItemView {
 		this.linkHandler = new LinkHandler(plugin, {
 			onOpenFile: (path) => this.openFile(path),
 		});
+
+		this.fileContentExtractor = new FileContentExtractor(this.app);
 
 		this.messageRenderer = new MessageRenderer(plugin, {
 			onFixInternalLinks: (container) =>
@@ -72,6 +76,11 @@ export class ChatbotView extends ItemView {
 	async onOpen(): Promise<void> {
 		void this.plugin.markdownIndexService?.init();
 
+		const lastUsedMode = this.plugin.settings.ai.lastUsedMode;
+		if (lastUsedMode) {
+			this.mode = lastUsedMode;
+		}
+
 		const container = (this.container = this.containerEl
 			.children[1] as HTMLElement);
 		container.empty();
@@ -84,10 +93,6 @@ export class ChatbotView extends ItemView {
 
 		this.pinsEl = container.createDiv({ cls: "chatbot-pins" });
 		this.renderPins();
-
-		this.sessionManager.createModeToggle(header, this.mode, (mode) => {
-			this.mode = mode;
-		});
 
 		this.sessionManager.createSessionsButton(header, () => {
 			new ChatSessionsModal(this.app, this.plugin, () =>
@@ -110,9 +115,19 @@ export class ChatbotView extends ItemView {
 				this.currentProviderSelection = selection;
 			},
 			placeholder: "Ask about your team docs...",
+			mode: this.mode,
 		});
 
 		this.addChild(this.chatInput);
+
+		this.sessionManager.createModeToggle(header, this.mode, (mode) => {
+			this.mode = mode;
+			this.plugin.settings.ai.lastUsedMode = mode;
+			this.plugin.saveSettings();
+			if (this.chatInput) {
+				this.chatInput.updateMode(mode);
+			}
+		});
 	}
 
 	async onClose(): Promise<void> {
@@ -205,21 +220,77 @@ export class ChatbotView extends ItemView {
 			);
 		}
 
-		this.appendMessage({ role: "user", content: message });
+		let processedMessage = message;
+		if (this.mode === "chat") {
+			console.log("[ChatbotView] Processing message in chat mode:", message);
+			processedMessage =
+				await this.fileContentExtractor.processTextWithAttachments(message);
+			console.log("[ChatbotView] Processed message:", processedMessage);
+		}
 
-		if (this.mode === "write") {
-			await this.handleWriteMode(message, providerSelection);
+		this.appendMessage({ role: "user", content: processedMessage });
+
+		if (this.mode === "compose") {
+			await this.handleComposeMode(processedMessage, providerSelection);
+		} else if (this.mode === "write") {
+			await this.handleWriteMode(processedMessage, providerSelection);
 		} else {
-			await this.handleChatMode(message, providerSelection);
+			await this.handleChatMode(processedMessage, providerSelection);
 		}
 	}
 
-	private async handleChatMode(
+	private async handleComposeMode(
 		message: string,
 		providerSelection: ProviderSelection
 	): Promise<void> {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
+
+		const mentionRegex = /\[\[([^\]]+)\|?[^\]]*\]\]/g;
+		const mentions: string[] = [];
+		let match;
+
+		while ((match = mentionRegex.exec(message)) !== null) {
+			mentions.push(match[1]);
+		}
+
+		const cleanMessage = message
+			.replace(/\[\[([^\]]+)\|([^\]]+)\]\]/g, "$2")
+			.replace(/\[\[([^\]]+)\]\]/g, "$1");
+
+		if (session.messages.length > 0) {
+			const lastMessage = session.messages[session.messages.length - 1];
+			if (lastMessage.role === "user") {
+				lastMessage.content = cleanMessage;
+			}
+		}
+
+		let attachedContent = "";
+		if (mentions.length > 0) {
+			const attachedFiles: string[] = [];
+			for (const mentionPath of mentions) {
+				try {
+					const file = this.app.vault.getAbstractFileByPath(mentionPath);
+					if (file instanceof TFile) {
+						const content = await this.app.vault.read(file);
+						attachedFiles.push(`File: ${mentionPath}\n\n${content}`);
+					}
+				} catch (error) {
+					console.warn(
+						`[ChatbotView] Could not read mentioned file: ${mentionPath}`,
+						error
+					);
+				}
+			}
+
+			if (attachedFiles.length > 0) {
+				attachedContent = `<attachedcontent>\n${attachedFiles.join(
+					"\n\n---\n\n"
+				)}\n</attachedcontent>`;
+				session.messages[session.messages.length - 1].content =
+					cleanMessage + "\n\n" + attachedContent;
+			}
+		}
 
 		const pinned = this.plugin.chatSessionService.getPinned();
 		const candidates =
@@ -230,11 +301,20 @@ export class ChatbotView extends ItemView {
 			content: `You are a helpful assistant for a software team. 
 
 CRITICAL WORKFLOW:
-1. ALWAYS use search_docs tool first to find relevant files
-2. Use read_doc to get full file content when needed
-3. Use follow_links to gather comprehensive context from linked documents
-4. When making changes, ALWAYS use propose_edit or create_doc tools - NEVER output JSON or file content directly
-5. After using tools, provide a brief natural language summary
+1. Check if <attachedcontent> tags are present in the user message
+2. If attachedcontent exists: Use that content directly - NO need to read_doc those specific files
+3. ALWAYS use search_docs tool to find additional relevant files
+4. Use read_doc ONLY for files NOT already provided in attachedcontent
+5. Use follow_links to gather comprehensive context from linked documents
+6. When making changes, ALWAYS use propose_edit or create_doc tools - NEVER output JSON or file content directly
+7. After using tools, provide a brief natural language summary
+
+ATTACHED CONTENT OPTIMIZATION:
+- If user mentions files with [[filename]], their content is provided in <attachedcontent> tags
+- Skip read_doc for files already in attachedcontent - use that content directly
+- Still search_docs to discover related files not mentioned by user
+- Still follow_links if attached content references other documents
+- Only read_doc files that are discovered but not already attached
 
 TOOL USAGE RULES:
 - NEVER output structured data, JSON, or file content in your response
@@ -336,6 +416,96 @@ ${
 			}
 
 			await this.handleProposalsAndCreations(result);
+		} catch (error) {
+			streamingMessage.setThinking(false);
+			streamingMessage.updateContent(
+				`Error: ${error instanceof Error ? error.message : "Unknown error"}`
+			);
+			console.error("[ChatbotView] Chat error:", error);
+		}
+	}
+
+	private async handleChatMode(
+		message: string,
+		providerSelection: ProviderSelection
+	): Promise<void> {
+		const session = this.plugin.chatSessionService.getActive();
+		if (!session) return;
+
+		const mentionRegex = /\[\[([^\]]+)\|?[^\]]*\]\]/g;
+		const mentions: string[] = [];
+		let match;
+
+		while ((match = mentionRegex.exec(message)) !== null) {
+			mentions.push(match[1]);
+		}
+
+		const cleanMessage = message
+			.replace(/\[\[([^\]]+)\|([^\]]+)\]\]/g, "$2")
+			.replace(/\[\[([^\]]+)\]\]/g, "$1");
+
+		if (session.messages.length > 0) {
+			const lastMessage = session.messages[session.messages.length - 1];
+			if (lastMessage.role === "user") {
+				lastMessage.content = cleanMessage;
+			}
+		}
+
+		let attachedContent = "";
+		if (mentions.length > 0) {
+			const attachedFiles: string[] = [];
+			for (const mentionPath of mentions) {
+				try {
+					const file = this.app.vault.getAbstractFileByPath(mentionPath);
+					if (file instanceof TFile) {
+						const content = await this.app.vault.read(file);
+						attachedFiles.push(`File: ${mentionPath}\n\n${content}`);
+					}
+				} catch (error) {
+					console.warn(
+						`[ChatbotView] Could not read mentioned file: ${mentionPath}`,
+						error
+					);
+				}
+			}
+
+			if (attachedFiles.length > 0) {
+				attachedContent = `<attachedcontent>\n${attachedFiles.join(
+					"\n\n---\n\n"
+				)}\n</attachedcontent>`;
+				session.messages[session.messages.length - 1].content =
+					cleanMessage + "\n\n" + attachedContent;
+			}
+		}
+
+		const streamingMessage = this.messageRenderer.createStreamingMessage(
+			this.messagesEl
+		);
+		streamingMessage.setThinking(true);
+
+		try {
+			const result = await this.plugin.aiService!.streamChat(
+				session.messages,
+				"chat",
+				(delta) => {
+					streamingMessage.appendContent(delta);
+					streamingMessage.setThinking(false);
+				},
+				(status) => {
+					streamingMessage.contentEl.textContent = status;
+					streamingMessage.setThinking(true);
+				},
+				(thoughts) => {
+					streamingMessage.addThinkingSection(thoughts);
+				},
+				providerSelection.provider,
+				providerSelection.modelId
+			);
+
+			const finalText =
+				streamingMessage.contentEl.textContent || result.text || "";
+			session.messages.push({ role: "assistant", content: finalText });
+			await streamingMessage.finalize();
 		} catch (error) {
 			streamingMessage.setThinking(false);
 			streamingMessage.updateContent(
@@ -511,14 +681,8 @@ Apply the changes I requested while keeping the existing structure and style int
 		if (result.creations?.length) {
 			console.log("[ChatbotView] Found creations:", result.creations);
 			for (const creation of result.creations) {
-				if (creation.path && creation.content) {
-					try {
-						await this.plugin.app.vault.create(creation.path, creation.content);
-						new Notice(`Created file: ${creation.path}`);
-					} catch (error) {
-						console.error("[ChatbotView] Failed to create file:", error);
-						new Notice(`Failed to create file: ${creation.path}`);
-					}
+				if (creation.path) {
+					new Notice(`Created file: ${creation.path}`);
 				}
 			}
 		}
