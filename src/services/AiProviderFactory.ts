@@ -274,9 +274,7 @@ export class AiProviderFactory {
 
 	private async testOllamaConnection(): Promise<boolean> {
 		try {
-			const response = await fetch(
-				`${this.settings.ai.ollamaBaseUrl}/api/tags`
-			);
+			const response = await fetch(`${this.settings.ai.ollamaBaseUrl}/models`);
 			return response.ok;
 		} catch (error) {
 			return false;
