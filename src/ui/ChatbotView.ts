@@ -227,11 +227,56 @@ export class ChatbotView extends ItemView {
 
 		const system: ModelMessage = {
 			role: "system",
-			content: `You are a helpful assistant for a software team. CRITICAL: You MUST use search_docs tool for every question to read actual file content before answering. Never guess or assume file contents. ${
-				pinned.length > 0
-					? "The user has pinned specific files - search these first, but also search for additional relevant files."
-					: "Use search_docs to find all relevant files."
-			} If search_docs snippets are insufficient, use read_doc to get full file content. IMPORTANT: After reading any document with read_doc, use the follow_links tool on that document's content to gather comprehensive context from linked documents (up to 5 documents deep) if the link is not found in the search_docs and it's relevant. Do not skip this step even if you think the document doesn't contain links. Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`,
+			content: `You are a helpful assistant for a software team. 
+
+CRITICAL WORKFLOW:
+1. ALWAYS use search_docs tool first to find relevant files
+2. Use read_doc to get full file content when needed
+3. Use follow_links to gather comprehensive context from linked documents
+4. When making changes, ALWAYS use propose_edit or create_doc tools - NEVER output JSON or file content directly
+5. After using tools, provide a brief natural language summary
+
+TOOL USAGE RULES:
+- NEVER output structured data, JSON, or file content in your response
+- ALWAYS use propose_edit with complete file content when editing
+- ALWAYS use create_doc when creating new files
+- Your final response should only be a natural language summary of what you accomplished
+
+${
+	providerSelection.provider === "ollama"
+		? `
+OLLAMA-SPECIFIC ENFORCEMENT:
+- If user requests editing or creating files, you MUST use propose_edit or create_doc tools
+- DO NOT output translations, document content, or what "should be" in the document
+- DO NOT stop until you have actually used the appropriate tool
+- NEVER provide the content as text - ALWAYS use the tools
+- Your job is not complete until the tool has been executed
+`
+		: ""
+}
+
+${
+	providerSelection.modelId?.toLowerCase().includes("mistral")
+		? `
+MISTRAL-SPECIFIC ENFORCEMENT:
+- ALWAYS use <think> tags when formulating your response or reasoning through problems
+- Put ALL your reasoning, planning, and thought process inside <think></think> tags
+- Close your thinking with </think> before taking any actions or giving final answers
+- DO NOT think out loud as your final answer - use the thinking tags properly
+- You can use multiple tools during the process as needed (search, read, edit, create, etc.)
+- You do NOT need user confirmation to make edits - proceed directly with propose_edit or create_doc
+- After thinking, immediately execute the required tools (propose_edit, create_doc, etc.)
+- Your final response should only be a brief summary after tool execution
+`
+		: ""
+}
+}
+
+${
+	pinned.length > 0
+		? "The user has pinned specific files - search these first, but also search for additional relevant files."
+		: "Use search_docs to find all relevant files."
+} If search_docs snippets are insufficient, use read_doc to get full file content. IMPORTANT: After reading any document with read_doc, if it has in it's content any links with the format [[path/to/file.md|filename]], use the follow_links tool on that document's content to gather comprehensive context from linked documents (up to 5 documents deep) if the link is not found in the search_docs and it's relevant. Do not skip this step even if you think the document doesn't contain links. Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`,
 		};
 
 		const contextBlurb = candidates
@@ -270,13 +315,11 @@ export class ChatbotView extends ItemView {
 					streamingMessage.setThinking(false);
 				},
 				(status) => {
-					if (
-						streamingMessage.contentEl.textContent === "" ||
-						streamingMessage.contentEl.hasClass("thinking")
-					) {
-						streamingMessage.contentEl.textContent = status;
-						streamingMessage.setThinking(true);
-					}
+					streamingMessage.contentEl.textContent = status;
+					streamingMessage.setThinking(true);
+				},
+				(thoughts) => {
+					streamingMessage.addThinkingSection(thoughts);
 				},
 				providerSelection.provider,
 				providerSelection.modelId
@@ -342,7 +385,29 @@ export class ChatbotView extends ItemView {
 				role: "system",
 				content: `You are editing the file: ${path}
 
-First use read_doc to get the current content, then use propose_edit with the complete updated content based on the user's request. Generate the full updated markdown content incorporating the requested changes while maintaining the existing structure and style unless specifically asked to change it.`,
+CRITICAL WORKFLOW:
+1. First use read_doc to get the current content
+2. Then use propose_edit with the complete updated content based on the user's request
+3. NEVER output file content directly - ALWAYS use the propose_edit tool
+4. After using propose_edit, provide only a brief summary of what you changed
+
+${
+	providerSelection.modelId?.toLowerCase().includes("mistral")
+		? `
+MISTRAL-SPECIFIC ENFORCEMENT:
+- ALWAYS use <think> tags when formulating your response or reasoning through problems
+- Put ALL your reasoning, planning, and thought process inside <think></think> tags
+- Close your thinking with </think> before taking any actions or giving final answers
+- DO NOT think out loud as your final answer - use the thinking tags properly
+- You can use multiple tools during the process as needed (search, read, edit, create, etc.)
+- You do NOT need user confirmation to make edits - proceed directly with propose_edit or create_doc
+- After thinking, immediately execute the required tools (propose_edit, create_doc, etc.)
+- Your final response should only be a brief summary after tool execution
+`
+		: ""
+}
+
+Generate the full updated markdown content incorporating the requested changes while maintaining the existing structure and style unless specifically asked to change it.`,
 			};
 
 			const fileContext: ModelMessage = {
@@ -373,6 +438,9 @@ Apply the changes I requested while keeping the existing structure and style int
 						streamingMessage.updateContent(status);
 						streamingMessage.setThinking(true);
 					}
+				},
+				(thoughts) => {
+					streamingMessage.addThinkingSection(thoughts);
 				},
 				providerSelection.provider,
 				providerSelection.modelId
