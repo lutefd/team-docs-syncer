@@ -67,7 +67,7 @@ export class AiService {
 
 		const baseInstructions =
 			mode === "compose"
-				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use search_docs/read_doc to find information. If users ask about editing files, use propose_edit tool - first read the current content with read_doc, then provide the complete updated content in the propose_edit tool. Be concise and cite files using [[path/to/file.md|filename]] format.`
+				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use search_docs/read_doc to find information. If users ask about editing files, use propose_edit tool - first read the current content with read_doc, then provide the complete updated content in the propose_edit tool. Be concise and cite files using [[path/to/file.md|filename]] format. Always use the same language the user is talking to you in, unless he/she is asking for a translation and specifies the language.`
 				: mode === "write"
 				? `You help edit Markdown files strictly inside (${teamRoot}). For edits: 
 1. First use read_doc to get current content
