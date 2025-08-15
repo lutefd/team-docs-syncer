@@ -55,10 +55,15 @@ export class MessageRenderer extends Component {
 		const contentEl = row.createEl("div", { cls: "msg-content" });
 
 		try {
-			const contentText =
+			let contentText =
 				typeof message.content === "string"
 					? message.content
 					: JSON.stringify(message.content);
+
+			contentText = contentText.replace(
+				/<attachedcontent[^>]*>[\s\S]*?<\/attachedcontent>/g,
+				""
+			);
 
 			await MarkdownRenderer.render(
 				this.plugin.app,
@@ -78,10 +83,15 @@ export class MessageRenderer extends Component {
 				"[MessageRenderer] Markdown render failed; falling back to text",
 				e
 			);
-			const contentText =
+			let contentText =
 				typeof message.content === "string"
 					? message.content
 					: JSON.stringify(message.content);
+
+			contentText = contentText.replace(
+				/<attachedcontent>[\s\S]*?<\/attachedcontent>/g,
+				""
+			);
 			contentEl.textContent = contentText;
 
 			this.linkHandler.fixInternalLinks(contentEl);
@@ -178,15 +188,43 @@ export class MessageRenderer extends Component {
 			contentEl.removeClass("thinking");
 
 			if (currentContent) {
+				let processedContent = currentContent;
+
+				const thinkMatches = processedContent.match(
+					/<think>([\s\S]*?)<\/think>/g
+				);
+
+				if (thinkMatches) {
+					for (const match of thinkMatches) {
+						const thinkContent = match.replace(/<\/?think>/g, "");
+						if (thinkContent.trim()) {
+							addThinkingSection(thinkContent);
+						}
+					}
+					processedContent = processedContent.replace(
+						/<think>[\s\S]*?<\/think>/g,
+						""
+					);
+				}
+
+				processedContent = processedContent.replace(
+					/<attachedcontent[^>]*>[\s\S]*?<\/attachedcontent>/g,
+					""
+				);
+
 				try {
 					contentEl.empty();
 					await MarkdownRenderer.render(
 						this.plugin.app,
-						currentContent,
+						processedContent,
 						contentEl,
 						this.plugin.app.workspace.getActiveFile()?.path || "/",
 						this
 					);
+
+					const attachedContentElements =
+						contentEl.querySelectorAll("attachedcontent");
+					attachedContentElements.forEach((el) => el.remove());
 
 					this.linkHandler.fixInternalLinks(contentEl);
 
@@ -198,7 +236,11 @@ export class MessageRenderer extends Component {
 						"[MessageRenderer] Markdown render failed; falling back to text",
 						e
 					);
-					contentEl.textContent = currentContent;
+					let cleanContent = processedContent.replace(
+						/<attachedcontent[^>]*>[\s\S]*?<\/attachedcontent>/g,
+						""
+					);
+					contentEl.textContent = cleanContent;
 					this.linkHandler.fixInternalLinks(contentEl);
 				}
 			}
