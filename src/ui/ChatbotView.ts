@@ -1,10 +1,4 @@
-import {
-	ItemView,
-	WorkspaceLeaf,
-	Notice,
-	MarkdownRenderer,
-	TFile,
-} from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import TeamDocsPlugin from "../../main";
 import type { ModelMessage } from "ai";
 import { ChatSessionsModal } from "./ChatSessionsModal";
@@ -246,7 +240,7 @@ export class ChatbotView extends ItemView {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
-		const mentionRegex = /\[\[([^\]]+)\|?[^\]]*\]\]/g;
+		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
 		const mentions: string[] = [];
 		let match;
 
@@ -432,7 +426,7 @@ ${
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
-		const mentionRegex = /\[\[([^\]]+)\|?[^\]]*\]\]/g;
+		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
 		const mentions: string[] = [];
 		let match;
 
