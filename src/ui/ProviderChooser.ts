@@ -13,6 +13,7 @@ export interface ProviderChooserOptions {
 	onSelectionChange: (selection: ProviderSelection) => void;
 	onSettingsChange?: (settings: TeamDocsSettings) => Promise<void>;
 	initialSelection?: ProviderSelection;
+	mode?: "compose" | "write" | "chat";
 }
 
 /**
@@ -99,7 +100,10 @@ export class ProviderChooser extends Component {
 			return null;
 		}
 
-		const availableModels = this.factory.getAvailableModels(lastUsedProvider);
+		const availableModels = this.factory.getAvailableModels(
+			lastUsedProvider,
+			this.options.mode
+		);
 		const modelExists = availableModels.some(
 			(model) => model.id === lastUsedModel
 		);
@@ -133,7 +137,10 @@ export class ProviderChooser extends Component {
 	private populateModels(provider: AiProvider) {
 		this.modelSelectEl.empty();
 
-		const availableModels = this.factory.getAvailableModels(provider);
+		const availableModels = this.factory.getAvailableModels(
+			provider,
+			this.options.mode
+		);
 
 		if (availableModels.length === 0) {
 			const option = this.modelSelectEl.createEl("option", {
@@ -273,6 +280,14 @@ export class ProviderChooser extends Component {
 			this.setSelection(currentSelection);
 		} else {
 			this.selectFirstAvailableProvider();
+		}
+	}
+
+	public updateMode(mode: "compose" | "write" | "chat") {
+		this.options.mode = mode;
+		const currentProvider = this.providerSelectEl.value as AiProvider;
+		if (currentProvider) {
+			this.populateModels(currentProvider);
 		}
 	}
 }
