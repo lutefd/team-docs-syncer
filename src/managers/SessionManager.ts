@@ -120,13 +120,13 @@ export class SessionManager extends Component {
 	 */
 	public createModeToggle(
 		container: HTMLElement,
-		currentMode: "chat" | "write",
-		onModeChange: (mode: "chat" | "write") => void
-	): { chatBtn: HTMLButtonElement; writeBtn: HTMLButtonElement } {
+		currentMode: "compose" | "write" | "chat",
+		onModeChange: (mode: "compose" | "write" | "chat") => void
+	): { composeBtn: HTMLButtonElement; writeBtn: HTMLButtonElement; chatBtn: HTMLButtonElement } {
 		const modeWrap = container.createDiv({ cls: "chatbot-mode" });
 
-		const chatBtn = modeWrap.createEl("button", {
-			text: "Chat",
+		const composeBtn = modeWrap.createEl("button", {
+			text: "Compose",
 			cls: "chatbot-btn",
 		});
 
@@ -135,18 +135,25 @@ export class SessionManager extends Component {
 			cls: "chatbot-btn",
 		});
 
-		const setMode = (mode: "chat" | "write") => {
-			chatBtn.toggleClass("is-active", mode === "chat");
+		const chatBtn = modeWrap.createEl("button", {
+			text: "Chat",
+			cls: "chatbot-btn",
+		});
+
+		const setMode = (mode: "compose" | "write" | "chat") => {
+			composeBtn.toggleClass("is-active", mode === "compose");
 			writeBtn.toggleClass("is-active", mode === "write");
+			chatBtn.toggleClass("is-active", mode === "chat");
 			onModeChange(mode);
 		};
 
-		chatBtn.onclick = () => setMode("chat");
+		composeBtn.onclick = () => setMode("compose");
 		writeBtn.onclick = () => setMode("write");
+		chatBtn.onclick = () => setMode("chat");
 
 		setMode(currentMode);
 
-		return { chatBtn, writeBtn };
+		return { composeBtn, writeBtn, chatBtn };
 	}
 
 	/**
