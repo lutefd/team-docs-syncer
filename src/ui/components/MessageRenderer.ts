@@ -102,11 +102,16 @@ export class MessageRenderer extends Component {
 		updateContent: (text: string) => void;
 		appendContent: (delta: string) => void;
 		setThinking: (thinking: boolean) => void;
+		addThinkingSection: (thoughts: string) => void;
 		finalize: () => Promise<void>;
 	} {
 		const row = container.createDiv({ cls: `msg msg-${role}` });
 		const authorText = role === "user" ? "You" : "Assistant";
 		row.createEl("div", { text: authorText, cls: "msg-author" });
+
+		let thinkingSection: HTMLElement | null = null;
+		let thinkingContent = "";
+
 		const contentEl = row.createEl("div", { cls: "msg-content" });
 
 		let currentContent = "";
@@ -128,6 +133,44 @@ export class MessageRenderer extends Component {
 				contentEl.addClass("thinking");
 			} else {
 				contentEl.removeClass("thinking");
+			}
+		};
+
+		const addThinkingSection = (thoughts: string) => {
+			thinkingContent += thoughts;
+
+			if (!thinkingSection) {
+				thinkingSection = row.createDiv({ cls: "thinking-section" });
+
+				const header = thinkingSection.createDiv({ cls: "thinking-header" });
+				header.createSpan({ text: "💡", cls: "thinking-icon" });
+				header.createSpan({ text: "Thinking process", cls: "thinking-title" });
+				const toggle = header.createSpan({ text: "▼", cls: "thinking-toggle" });
+
+				const thinkingContentEl = thinkingSection.createDiv({
+					cls: "thinking-content",
+				});
+
+				header.addEventListener("click", () => {
+					const isCollapsed = thinkingContentEl.hasClass("collapsed");
+					if (isCollapsed) {
+						thinkingContentEl.removeClass("collapsed");
+						toggle.textContent = "▼";
+					} else {
+						thinkingContentEl.addClass("collapsed");
+						toggle.textContent = "▲";
+					}
+				});
+
+				row.insertBefore(thinkingSection, contentEl);
+			}
+
+			const thinkingContentEl = thinkingSection.querySelector(
+				".thinking-content"
+			) as HTMLElement;
+			if (thinkingContentEl) {
+				thinkingContentEl.textContent = thinkingContent;
+				thinkingContentEl.scrollTop = thinkingContentEl.scrollHeight;
 			}
 		};
 
@@ -167,6 +210,7 @@ export class MessageRenderer extends Component {
 			updateContent,
 			appendContent,
 			setThinking,
+			addThinkingSection,
 			finalize,
 		};
 	}

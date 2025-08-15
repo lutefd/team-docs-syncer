@@ -1,5 +1,63 @@
 /* Team Docs Syncer Plugin Styles */
 
+/* Thinking Section Styles */
+.thinking-section {
+	margin: 8px 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+}
+
+.thinking-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	cursor: pointer;
+	-webkit-user-select: none;
+	-moz-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.thinking-header:hover {
+	background: var(--background-modifier-hover);
+}
+
+.thinking-icon {
+	font-size: 14px;
+}
+
+.thinking-title {
+	font-weight: 500;
+	color: var(--text-muted);
+	font-size: 12px;
+	flex: 1;
+}
+
+.thinking-toggle {
+	font-size: 10px;
+	color: var(--text-muted);
+	transition: transform 0.2s ease;
+}
+
+.thinking-content {
+	padding: 12px;
+	font-family: var(--font-monospace);
+	font-size: 11px;
+	color: var(--text-muted);
+	white-space: pre-wrap;
+	line-height: 1.4;
+	max-height: 300px;
+	overflow-y: auto;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.thinking-content.collapsed {
+	display: none;
+}
+
 /* Provider Chooser Styles */
 .provider-chooser {
 	display: flex;
@@ -132,9 +190,44 @@
 .pin-remove:hover {
 	color: var(--text-error);
 }
+.provider-chooser {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+	padding: 12px;
+}
 
-/* Compact variant for smaller spaces */
-.provider-chooser.compact {
+.provider-group,
+.model-group {
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+}
+
+.provider-label,
+.model-label {
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.provider-select,
+.model-select {
+	width: 100%;
+	padding: 6px 12px;
+	font-size: 14px;
+	border-radius: 6px;
+	box-sizing: border-box;
+	min-height: 32px;
+	line-height: 1.2;
+}
+
+/* Status positioning */
+.provider-status {
+	margin-top: 8px;
+	align-self: flex-end;
+}
+Compact variant for smaller spaces */ .provider-chooser.compact {
 	padding: 4px 8px;
 	gap: 8px;
 	font-size: 12px;
