@@ -113,6 +113,7 @@ export class MessageRenderer extends Component {
 		appendContent: (delta: string) => void;
 		setThinking: (thinking: boolean) => void;
 		addThinkingSection: (thoughts: string) => void;
+		setPlaceholder: (placeholder: string) => void;
 		finalize: () => Promise<void>;
 	} {
 		const row = container.createDiv({ cls: `msg msg-${role}` });
@@ -125,17 +126,39 @@ export class MessageRenderer extends Component {
 		const contentEl = row.createEl("div", { cls: "msg-content" });
 
 		let currentContent = "";
+		let isPlaceholder = false;
 
 		const updateContent = (text: string) => {
-			currentContent = text;
-			contentEl.textContent = text;
+			const cleanText = text
+				.replace(/<think>[\s\S]*?<\/think>/g, "")
+				.replace(/<finalAnswer>/g, "")
+				.replace(/<\/finalAnswer>/g, "");
+
+			currentContent = cleanText;
+			isPlaceholder = false;
+			contentEl.textContent = cleanText;
+			contentEl.removeClass("placeholder");
 			container.scrollTop = container.scrollHeight;
 		};
 
 		const appendContent = (delta: string) => {
-			currentContent += delta;
-			contentEl.textContent = currentContent;
-			container.scrollTop = container.scrollHeight;
+			const cleanDelta = delta
+				.replace(/<think>/g, "")
+				.replace(/<\/think>/g, "")
+				.replace(/<finalAnswer>/g, "")
+				.replace(/<\/finalAnswer>/g, "");
+
+			if (cleanDelta) {
+				if (isPlaceholder) {
+					currentContent = cleanDelta;
+					isPlaceholder = false;
+					contentEl.removeClass("placeholder");
+				} else {
+					currentContent += cleanDelta;
+				}
+				contentEl.textContent = currentContent;
+				container.scrollTop = container.scrollHeight;
+			}
 		};
 
 		const setThinking = (thinking: boolean) => {
@@ -146,8 +169,27 @@ export class MessageRenderer extends Component {
 			}
 		};
 
+		const setPlaceholder = (placeholder: string) => {
+			if (placeholder) {
+				isPlaceholder = true;
+				contentEl.textContent = placeholder;
+				contentEl.addClass("placeholder");
+			} else {
+				isPlaceholder = false;
+				contentEl.removeClass("placeholder");
+				if (!currentContent) {
+					contentEl.textContent = "";
+				}
+			}
+			container.scrollTop = container.scrollHeight;
+		};
+
 		const addThinkingSection = (thoughts: string) => {
-			thinkingContent += thoughts;
+			const cleanThoughts = thoughts
+				.replace(/<think>/g, "")
+				.replace(/<\/think>/g, "");
+
+			thinkingContent += cleanThoughts;
 
 			if (!thinkingSection) {
 				thinkingSection = row.createDiv({ cls: "thinking-section" });
@@ -186,6 +228,8 @@ export class MessageRenderer extends Component {
 
 		const finalize = async () => {
 			contentEl.removeClass("thinking");
+			contentEl.removeClass("placeholder");
+			isPlaceholder = false;
 
 			if (currentContent) {
 				let processedContent = currentContent;
@@ -253,6 +297,7 @@ export class MessageRenderer extends Component {
 			appendContent,
 			setThinking,
 			addThinkingSection,
+			setPlaceholder,
 			finalize,
 		};
 	}
