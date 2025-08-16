@@ -68,7 +68,7 @@ export class ChatbotView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
-		void this.plugin.markdownIndexService?.init();
+		await this.plugin.markdownIndexService?.init();
 
 		const lastUsedMode = this.plugin.settings.ai.lastUsedMode;
 		if (lastUsedMode) {
@@ -78,8 +78,7 @@ export class ChatbotView extends ItemView {
 		const container = (this.container = this.containerEl
 			.children[1] as HTMLElement);
 		container.empty();
-		container.addClass("team-chatbot-view");
-		container.addClass("chatbot-view");
+		container.addClass("team-chatbot-view", "chatbot-view");
 
 		this.setupResponsiveDetection(container);
 
@@ -97,7 +96,7 @@ export class ChatbotView extends ItemView {
 		this.sourcesEl = container.createDiv({ cls: "chatbot-sources" });
 
 		this.messagesEl = container.createDiv({ cls: "chatbot-messages" });
-		this.renderMessages();
+		await this.renderMessages();
 
 		const composerContainer = container.createDiv({
 			cls: "chatbot-composer-container",
@@ -118,9 +117,7 @@ export class ChatbotView extends ItemView {
 			this.mode = mode;
 			this.plugin.settings.ai.lastUsedMode = mode;
 			this.plugin.saveSettings();
-			if (this.chatInput) {
-				this.chatInput.updateMode(mode);
-			}
+			this.chatInput?.updateMode(mode);
 		});
 	}
 
@@ -156,15 +153,6 @@ export class ChatbotView extends ItemView {
 		} else if (width <= 617) {
 			container.addClass("narrow");
 		}
-
-		console.log(
-			`[ChatbotView] Container width: ${width}px, applied classes:`,
-			container.className
-				.split(" ")
-				.filter((cls) =>
-					["narrow", "very-narrow", "extremely-narrow"].includes(cls)
-				)
-		);
 	}
 
 	private renderPins(): void {
@@ -185,7 +173,11 @@ export class ChatbotView extends ItemView {
 	}
 
 	private renderSources(sources: string[]): void {
-		this.sessionManager.renderSources(this.sourcesEl, sources);
+		if (sources.length > 0) {
+			this.sessionManager.renderSources(this.sourcesEl, sources);
+		} else {
+			this.sourcesEl.empty();
+		}
 	}
 
 	private async handleSend(
@@ -198,9 +190,7 @@ export class ChatbotView extends ItemView {
 		}
 
 		if (!this.plugin.aiService?.hasApiKey(providerSelection.provider)) {
-			new Notice(
-				`${providerSelection.provider} API key is missing in settings.`
-			);
+			new Notice(`${providerSelection.provider} API key is missing.`);
 			return;
 		}
 
@@ -214,143 +204,149 @@ export class ChatbotView extends ItemView {
 			);
 		}
 
-		let processedMessage = message;
+		let userMessageContent = message;
 		if (this.mode === "chat") {
-			console.log("[ChatbotView] Processing message in chat mode:", message);
-			processedMessage =
+			userMessageContent =
 				await this.fileContentExtractor.processTextWithAttachments(message);
-			console.log("[ChatbotView] Processed message:", processedMessage);
 		}
 
-		this.appendMessage({ role: "user", content: processedMessage });
+		this.appendMessage({ role: "user", content: userMessageContent });
+
+		if (this.mode === "chat" || this.mode === "compose") {
+			await this.processMentionsAndAttachments(session, message);
+		}
 
 		if (this.mode === "compose") {
-			await this.handleComposeMode(processedMessage, providerSelection);
+			await this.handleComposeMode(providerSelection);
 		} else if (this.mode === "write") {
-			await this.handleWriteMode(processedMessage, providerSelection);
+			await this.handleWriteMode(providerSelection);
 		} else {
-			await this.handleChatMode(processedMessage, providerSelection);
+			await this.handleChatMode(providerSelection);
 		}
 	}
 
+	private async processMentionsAndAttachments(
+		session: any,
+		originalMessage: string
+	): Promise<void> {
+		if (session.messages.length === 0) return;
+
+		const lastMessage = session.messages[session.messages.length - 1];
+		if (lastMessage.role !== "user") return;
+
+		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
+		const mentions: string[] = [];
+		let match;
+		while ((match = mentionRegex.exec(originalMessage)) !== null) {
+			mentions.push(match[1]);
+		}
+
+		const cleanMessage = originalMessage
+			.replace(/\[\[([^\]]+)\|([^\]]+)\]\]/g, "$2")
+			.replace(/\[\[([^\]]+)\]\]/g, "$1");
+
+		lastMessage.content = cleanMessage;
+
+		if (mentions.length === 0) return;
+
+		const attachedFiles: string[] = [];
+		for (const path of mentions) {
+			try {
+				const file = this.app.vault.getAbstractFileByPath(path);
+				if (file instanceof TFile) {
+					const content = await this.app.vault.read(file);
+					attachedFiles.push(`File: ${path}\n\n${content}`);
+				}
+			} catch (error) {
+				// Silent fail for missing files
+			}
+		}
+
+		if (attachedFiles.length > 0) {
+			const attachedContent = `<attachedcontent>\n${attachedFiles.join(
+				"\n\n---\n\n"
+			)}\n</attachedcontent>`;
+			lastMessage.content = cleanMessage + "\n\n" + attachedContent;
+		}
+	}
+
+	private createStreamingMessage() {
+		const streamingMessage = this.messageRenderer.createStreamingMessage(
+			this.messagesEl
+		);
+		streamingMessage.setPlaceholder("💭 Thinking...");
+		return streamingMessage;
+	}
+
+	private async handleStreamResult(
+		result: any,
+		streamingMessage: any,
+		session: any
+	) {
+		const finalText = streamingMessage.contentEl.textContent || result.text;
+		session.messages.push({ role: "assistant", content: finalText });
+		await streamingMessage.finalize();
+
+		this.renderSources(result.sources || []);
+
+		await this.handleProposalsAndCreations(result);
+	}
+
 	private async handleComposeMode(
-		message: string,
 		providerSelection: ProviderSelection
 	): Promise<void> {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
-		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
-		const mentions: string[] = [];
-		let match;
-
-		while ((match = mentionRegex.exec(message)) !== null) {
-			mentions.push(match[1]);
-		}
-
-		const cleanMessage = message
-			.replace(/\[\[([^\]]+)\|([^\]]+)\]\]/g, "$2")
-			.replace(/\[\[([^\]]+)\]\]/g, "$1");
-
-		if (session.messages.length > 0) {
-			const lastMessage = session.messages[session.messages.length - 1];
-			if (lastMessage.role === "user") {
-				lastMessage.content = cleanMessage;
-			}
-		}
-
-		let attachedContent = "";
-		if (mentions.length > 0) {
-			const attachedFiles: string[] = [];
-			for (const mentionPath of mentions) {
-				try {
-					const file = this.app.vault.getAbstractFileByPath(mentionPath);
-					if (file instanceof TFile) {
-						const content = await this.app.vault.read(file);
-						attachedFiles.push(`File: ${mentionPath}\n\n${content}`);
-					}
-				} catch (error) {
-					console.warn(
-						`[ChatbotView] Could not read mentioned file: ${mentionPath}`,
-						error
-					);
-				}
-			}
-
-			if (attachedFiles.length > 0) {
-				attachedContent = `<attachedcontent>\n${attachedFiles.join(
-					"\n\n---\n\n"
-				)}\n</attachedcontent>`;
-				session.messages[session.messages.length - 1].content =
-					cleanMessage + "\n\n" + attachedContent;
-			}
-		}
-
 		const pinned = this.plugin.chatSessionService.getPinned();
+		const lastMessage = session.messages[session.messages.length - 1];
+		const searchText =
+			typeof lastMessage.content === "string" ? lastMessage.content : "";
 		const candidates =
-			this.plugin.markdownIndexService?.search(message, 5) || [];
+			this.plugin.markdownIndexService?.search(searchText, 5) || [];
 
 		const system: ModelMessage = {
 			role: "system",
-			content: `You are a helpful assistant for a software team. 
+			content: `CRITICAL WORKFLOW (TOOLS FIRST):
+1. Check for <attachedcontent> in user message.
+2. If attachedcontent exists: Use it directly—SKIP read_doc for those files.
+3. ALWAYS use search_docs for additional relevant files.
+4. Use read_doc ONLY for non-attached files if needed.
+5. Use follow_links for linked documents (up to 5 deep) if relevant.
+6. For changes: ALWAYS use propose_edit/create_doc with COMPLETE content—NEVER output content/JSON directly.
+7. After tools: Provide brief natural language summary only.
 
-CRITICAL WORKFLOW:
-1. Check if <attachedcontent> tags are present in the user message
-2. If attachedcontent exists: Use that content directly - NO need to read_doc those specific files
-3. ALWAYS use search_docs tool to find additional relevant files
-4. Use read_doc ONLY for files NOT already provided in attachedcontent
-5. Use follow_links to gather comprehensive context from linked documents
-6. When making changes, ALWAYS use propose_edit or create_doc tools - NEVER output JSON or file content directly
-7. After using tools, provide a brief natural language summary
-
-ATTACHED CONTENT OPTIMIZATION:
-- If user mentions files with [[filename]], their content is provided in <attachedcontent> tags
-- Skip read_doc for files already in attachedcontent - use that content directly
-- Still search_docs to discover related files not mentioned by user
-- Still follow_links if attached content references other documents
-- Only read_doc files that are discovered but not already attached
+ATTACHED CONTENT RULES:
+- Skip read_doc for attached files—use provided content.
+- Still search_docs for related files.
+- Still follow_links if attached content references others.
 
 TOOL USAGE RULES:
-- NEVER output structured data, JSON, or file content in your response
-- ALWAYS use propose_edit with complete file content when editing
-- ALWAYS use create_doc when creating new files
-- Your final response should only be a natural language summary of what you accomplished
-
-${
-	providerSelection.provider === "ollama"
-		? `
-OLLAMA-SPECIFIC ENFORCEMENT:
-- If user requests editing or creating files, you MUST use propose_edit or create_doc tools
-- DO NOT output translations, document content, or what "should be" in the document
-- DO NOT stop until you have actually used the appropriate tool
-- NEVER provide the content as text - ALWAYS use the tools
-- Your job is not complete until the tool has been executed
-`
-		: ""
-}
-
-${
-	providerSelection.modelId?.toLowerCase().includes("mistral")
-		? `
-MISTRAL-SPECIFIC ENFORCEMENT:
-- ALWAYS use <think> tags when formulating your response or reasoning through problems
-- Put ALL your reasoning, planning, and thought process inside <think></think> tags
-- Close your thinking with </think> before taking any actions or giving final answers
-- DO NOT think out loud as your final answer - use the thinking tags properly
-- You can use multiple tools during the process as needed (search, read, edit, create, etc.)
-- You do NOT need user confirmation to make edits - proceed directly with propose_edit or create_doc
-- After thinking, immediately execute the required tools (propose_edit, create_doc, etc.)
-- Your final response should only be a brief summary after tool execution
-`
-		: ""
-}
-}
+- NEVER output structured data or file content.
+- Cite with [[path/to/file.md|filename]].
+- Be concise and accurate.${
+				providerSelection.provider === "ollama"
+					? `
+OLLAMA-SPECIFIC (MANDATORY):
+- MUST use propose_edit/create_doc for edits/creations.
+- EXECUTE tools immediately—do not describe or ask confirmation.
+- Tool execution is REQUIRED—do not stop early.`
+					: ""
+			}${
+				providerSelection.modelId?.toLowerCase().includes("mistral")
+					? `
+MISTRAL-SPECIFIC:
+- ALWAYS use <think> for reasoning/planning.
+- End thinking with </think> before actions.
+- Execute tools after thinking; final response is brief summary.`
+					: ""
+			}
 
 ${
 	pinned.length > 0
-		? "The user has pinned specific files - search these first, but also search for additional relevant files."
-		: "Use search_docs to find all relevant files."
-} If search_docs snippets are insufficient, use read_doc to get full file content. IMPORTANT: After reading any document with read_doc, if it has in it's content any links with the format [[path/to/file.md|filename]], use the follow_links tool on that document's content to gather comprehensive context from linked documents (up to 5 documents deep) if the link is not found in the search_docs and it's relevant. Do not skip this step even if you think the document doesn't contain links. Always cite file paths using Obsidian format [[path/to/file.md|filename]]. Be concise but accurate.`,
+		? "Prioritize pinned files, but search for more."
+		: "Use search_docs for all relevant files."
+} If snippets insufficient, use read_doc. Respond in user's language unless translating.`,
 		};
 
 		const contextBlurb = candidates
@@ -364,21 +360,14 @@ ${
 
 		const assistantPrep: ModelMessage = {
 			role: "system",
-			content: `Relevant files (by title/frontmatter):\n\n${contextBlurb}\n\nPinned files:\n${pinned
+			content: `Relevant files:\n\n${contextBlurb}\n\nPinned:\n${pinned
 				.map((p, i) => `#${i + 1} ${p}`)
 				.join("\n")}`,
 		};
 
-		const msgList = [
-			system,
-			assistantPrep,
-			...session.messages,
-		] as ModelMessage[];
+		const msgList = [system, assistantPrep, ...session.messages];
 
-		const streamingMessage = this.messageRenderer.createStreamingMessage(
-			this.messagesEl
-		);
-		streamingMessage.setThinking(true);
+		const streamingMessage = this.createStreamingMessage();
 
 		try {
 			const result = await this.plugin.aiService!.streamChat(
@@ -386,96 +375,30 @@ ${
 				this.mode,
 				(delta) => {
 					streamingMessage.appendContent(delta);
-					streamingMessage.setThinking(false);
 				},
 				(status) => {
-					streamingMessage.contentEl.textContent = status;
-					streamingMessage.setThinking(true);
+					streamingMessage.setPlaceholder(status);
 				},
-				(thoughts) => {
-					streamingMessage.addThinkingSection(thoughts);
-				},
+				(thoughts) => streamingMessage.addThinkingSection(thoughts),
+				(placeholder) => streamingMessage.setPlaceholder(placeholder),
 				providerSelection.provider,
 				providerSelection.modelId
 			);
 
-			const finalText =
-				streamingMessage.contentEl.textContent || result.text || "";
-			session.messages.push({ role: "assistant", content: finalText });
-			await streamingMessage.finalize();
-
-			const finalSources = result.sources?.length ? result.sources : [];
-			if (finalSources.length) {
-				this.renderSources(finalSources);
-			}
-
-			await this.handleProposalsAndCreations(result);
+			await this.handleStreamResult(result, streamingMessage, session);
 		} catch (error) {
-			streamingMessage.setThinking(false);
-			streamingMessage.updateContent(
-				`Error: ${error instanceof Error ? error.message : "Unknown error"}`
-			);
-			console.error("[ChatbotView] Chat error:", error);
+			streamingMessage.setPlaceholder("");
+			streamingMessage.updateContent(`Error: ${error.message}`);
 		}
 	}
 
 	private async handleChatMode(
-		message: string,
 		providerSelection: ProviderSelection
 	): Promise<void> {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
-		const mentionRegex = /\[\[([^\]]+?)(?:\|[^\]]+)?\]\]/g;
-		const mentions: string[] = [];
-		let match;
-
-		while ((match = mentionRegex.exec(message)) !== null) {
-			mentions.push(match[1]);
-		}
-
-		const cleanMessage = message
-			.replace(/\[\[([^\]]+)\|([^\]]+)\]\]/g, "$2")
-			.replace(/\[\[([^\]]+)\]\]/g, "$1");
-
-		if (session.messages.length > 0) {
-			const lastMessage = session.messages[session.messages.length - 1];
-			if (lastMessage.role === "user") {
-				lastMessage.content = cleanMessage;
-			}
-		}
-
-		let attachedContent = "";
-		if (mentions.length > 0) {
-			const attachedFiles: string[] = [];
-			for (const mentionPath of mentions) {
-				try {
-					const file = this.app.vault.getAbstractFileByPath(mentionPath);
-					if (file instanceof TFile) {
-						const content = await this.app.vault.read(file);
-						attachedFiles.push(`File: ${mentionPath}\n\n${content}`);
-					}
-				} catch (error) {
-					console.warn(
-						`[ChatbotView] Could not read mentioned file: ${mentionPath}`,
-						error
-					);
-				}
-			}
-
-			if (attachedFiles.length > 0) {
-				attachedContent = `<attachedcontent>\n${attachedFiles.join(
-					"\n\n---\n\n"
-				)}\n</attachedcontent>`;
-				session.messages[session.messages.length - 1].content =
-					cleanMessage + "\n\n" + attachedContent;
-			}
-		}
-
-		const streamingMessage = this.messageRenderer.createStreamingMessage(
-			this.messagesEl
-		);
-		streamingMessage.setThinking(true);
+		const streamingMessage = this.createStreamingMessage();
 
 		try {
 			const result = await this.plugin.aiService!.streamChat(
@@ -483,39 +406,39 @@ ${
 				"chat",
 				(delta) => {
 					streamingMessage.appendContent(delta);
-					streamingMessage.setThinking(false);
 				},
 				(status) => {
-					streamingMessage.contentEl.textContent = status;
-					streamingMessage.setThinking(true);
+					streamingMessage.setPlaceholder(status);
 				},
-				(thoughts) => {
-					streamingMessage.addThinkingSection(thoughts);
-				},
+				(thoughts) => streamingMessage.addThinkingSection(thoughts),
+				(placeholder) => streamingMessage.setPlaceholder(placeholder),
 				providerSelection.provider,
 				providerSelection.modelId
 			);
 
-			const finalText =
-				streamingMessage.contentEl.textContent || result.text || "";
-			session.messages.push({ role: "assistant", content: finalText });
-			await streamingMessage.finalize();
+			await this.handleStreamResult(result, streamingMessage, session);
 		} catch (error) {
-			streamingMessage.setThinking(false);
-			streamingMessage.updateContent(
-				`Error: ${error instanceof Error ? error.message : "Unknown error"}`
-			);
-			console.error("[ChatbotView] Chat error:", error);
+			streamingMessage.setPlaceholder("");
+			streamingMessage.updateContent(`Error: ${error.message}`);
 		}
 	}
 
 	private async handleWriteMode(
-		message: string,
 		providerSelection: ProviderSelection
 	): Promise<void> {
-		const pinned = this.plugin.chatSessionService.getPinned();
+		const messages = this.plugin.chatSessionService.getActive()?.messages;
+		const lastMessage =
+			messages && messages.length > 0
+				? messages[messages.length - 1]
+				: undefined;
+		if (!lastMessage?.content) return;
+
+		const searchText =
+			typeof lastMessage.content === "string" ? lastMessage.content : "";
+		if (!searchText) return;
+
 		const candidates =
-			this.plugin.markdownIndexService?.search(message, 5) || [];
+			this.plugin.markdownIndexService?.search(searchText, 5) || [];
 
 		const picked = await new Promise<string | null>((resolve) => {
 			new EditTargetModal(
@@ -538,142 +461,103 @@ ${
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
 
+		const file = this.app.vault.getAbstractFileByPath(path);
+		if (!(file instanceof TFile)) {
+			new Notice("File not found");
+			return;
+		}
+
+		const editSystem: ModelMessage = {
+			role: "system",
+			content: `CRITICAL WORKFLOW (TOOLS FIRST) for editing ${path}:
+1. ALWAYS use read_doc to get current content.
+2. Then use propose_edit with COMPLETE updated content.
+3. NEVER output content directly—use propose_edit.
+4. After tool: Provide brief summary only.
+
+TOOL USAGE RULES:
+- Maintain existing structure/style unless requested.
+- Cite with [[path/to/file.md|filename]].${
+				providerSelection.modelId?.toLowerCase().includes("mistral")
+					? `
+MISTRAL-SPECIFIC:
+- ALWAYS use <think> for reasoning.
+- End with </think> before actions.
+- Execute tools after thinking; final response is summary.`
+					: ""
+			}`,
+		};
+
+		const fileContext: ModelMessage = {
+			role: "user",
+			content: `Edit ${path}: Apply requested changes, keeping structure/style intact unless specified.`,
+		};
+
+		const streamingMessage = this.createStreamingMessage();
+		streamingMessage.setPlaceholder("📖 Reading file and preparing changes...");
+
 		try {
-			const file = this.app.vault.getAbstractFileByPath(path);
-			if (!(file instanceof TFile)) {
-				new Notice("File not found");
-				return;
-			}
-
-			const editSystem: ModelMessage = {
-				role: "system",
-				content: `You are editing the file: ${path}
-
-CRITICAL WORKFLOW:
-1. First use read_doc to get the current content
-2. Then use propose_edit with the complete updated content based on the user's request
-3. NEVER output file content directly - ALWAYS use the propose_edit tool
-4. After using propose_edit, provide only a brief summary of what you changed
-
-${
-	providerSelection.modelId?.toLowerCase().includes("mistral")
-		? `
-MISTRAL-SPECIFIC ENFORCEMENT:
-- ALWAYS use <think> tags when formulating your response or reasoning through problems
-- Put ALL your reasoning, planning, and thought process inside <think></think> tags
-- Close your thinking with </think> before taking any actions or giving final answers
-- DO NOT think out loud as your final answer - use the thinking tags properly
-- You can use multiple tools during the process as needed (search, read, edit, create, etc.)
-- You do NOT need user confirmation to make edits - proceed directly with propose_edit or create_doc
-- After thinking, immediately execute the required tools (propose_edit, create_doc, etc.)
-- Your final response should only be a brief summary after tool execution
-`
-		: ""
-}
-
-Generate the full updated markdown content incorporating the requested changes while maintaining the existing structure and style unless specifically asked to change it.`,
-			};
-
-			const fileContext: ModelMessage = {
-				role: "user",
-				content: `Please edit the file: ${path}
-
-Apply the changes I requested while keeping the existing structure and style intact unless specifically asked to modify them.`,
-			};
-
-			const streamingMessage = this.messageRenderer.createStreamingMessage(
-				this.messagesEl
-			);
-			streamingMessage.setThinking(true);
-			streamingMessage.updateContent("Reading file and generating changes...");
-
 			const result = await this.plugin.aiService!.streamChat(
 				[editSystem, ...session.messages, fileContext],
 				"write",
 				(delta) => {
 					streamingMessage.appendContent(delta);
-					streamingMessage.setThinking(false);
 				},
 				(status) => {
-					if (
-						(streamingMessage.contentEl.textContent || "") === "" ||
-						streamingMessage.contentEl.hasClass("thinking")
-					) {
-						streamingMessage.updateContent(status);
-						streamingMessage.setThinking(true);
-					}
+					streamingMessage.setPlaceholder(status);
 				},
-				(thoughts) => {
-					streamingMessage.addThinkingSection(thoughts);
-				},
+				(thoughts) => streamingMessage.addThinkingSection(thoughts),
+				(placeholder) => streamingMessage.setPlaceholder(placeholder),
 				providerSelection.provider,
 				providerSelection.modelId
 			);
 
-			const finalText =
-				streamingMessage.contentEl.textContent || result.text || "";
-			session.messages.push({ role: "assistant", content: finalText });
-			await streamingMessage.finalize();
-
-			await this.handleProposalsAndCreations(result);
-			await this.handleProposalsAndCreations(result);
+			await this.handleStreamResult(result, streamingMessage, session);
 		} catch (error) {
-			console.error("[ChatbotView] Write mode error:", error);
-			new Notice(
-				`Error editing file: ${
-					error instanceof Error ? error.message : "Unknown error"
-				}`
-			);
+			streamingMessage.setPlaceholder("");
+			streamingMessage.updateContent(`Error: ${error.message}`);
 		}
 	}
 
 	private async handleProposalsAndCreations(result: any): Promise<void> {
 		if (result.proposals?.length) {
-			console.log("[ChatbotView] Found proposals:", result.proposals);
 			for (const proposal of result.proposals) {
-				if (proposal.path && proposal.content) {
-					const file = this.app.vault.getAbstractFileByPath(proposal.path);
-					const originalContent =
-						file instanceof TFile ? await this.app.vault.read(file) : "";
+				if (!proposal.path || !proposal.content) continue;
 
-					const modal = new DiffModal(
-						this.app,
-						proposal.path,
-						originalContent,
-						proposal.content,
-						async (confirmed: boolean, editedContent?: string) => {
-							if (confirmed) {
-								try {
-									const contentToApply = editedContent || proposal.content;
+				const file = this.app.vault.getAbstractFileByPath(proposal.path);
+				const originalContent =
+					file instanceof TFile ? await this.app.vault.read(file) : "";
 
-									if (file instanceof TFile) {
-										await this.app.vault.modify(file, contentToApply);
-									} else {
-										const folderPath = proposal.path
-											.split("/")
-											.slice(0, -1)
-											.join("/");
-										if (folderPath) {
-											try {
-												await this.app.vault.createFolder(folderPath);
-											} catch {}
-										}
-										await this.app.vault.create(proposal.path, contentToApply);
-									}
-									new Notice(`Successfully updated ${proposal.path}`);
-								} catch (error) {
-									new Notice(`Failed to update ${proposal.path}: ${error}`);
-								}
+				new DiffModal(
+					this.app,
+					proposal.path,
+					originalContent,
+					proposal.content,
+					async (confirmed: boolean, editedContent?: string) => {
+						if (!confirmed) return;
+
+						try {
+							const contentToApply = editedContent || proposal.content;
+							if (file instanceof TFile) {
+								await this.app.vault.modify(file, contentToApply);
+							} else {
+								const folderPath = proposal.path
+									.split("/")
+									.slice(0, -1)
+									.join("/");
+								if (folderPath) await this.app.vault.createFolder(folderPath);
+								await this.app.vault.create(proposal.path, contentToApply);
 							}
+							new Notice(`Updated ${proposal.path}`);
+						} catch (error) {
+							new Notice(`Failed to update ${proposal.path}: ${error.message}`);
 						}
-					);
-					modal.open();
-				}
+					}
+				).open();
 			}
 		}
 
 		if (result.creations?.length) {
-			console.log("[ChatbotView] Found creations:", result.creations);
 			for (const creation of result.creations) {
 				if (creation.path) {
 					new Notice(`Created file: ${creation.path}`);
