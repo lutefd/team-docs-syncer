@@ -220,7 +220,7 @@ export class ChatbotView extends ItemView {
 			await this.handleComposeMode(providerSelection);
 		} else if (this.mode === "write") {
 			await this.handleWriteMode(providerSelection);
-		} else {
+		} else if (this.mode === "chat") {
 			await this.handleChatMode(providerSelection);
 		}
 	}
@@ -310,16 +310,16 @@ export class ChatbotView extends ItemView {
 			content: `CRITICAL WORKFLOW (TOOLS FIRST):
 1. Check for <attachedcontent> in user message.
 2. If attachedcontent exists: Use it directly—SKIP read_doc for those files.
-3. ALWAYS use search_docs for additional relevant files.
-4. Use read_doc ONLY for non-attached files if needed.
-5. Use follow_links for linked documents (up to 5 deep) if relevant.
+3. ALWAYS use list_docs/search_docs/search_tags to find relevant documents.
+4. Use get_backlinks/get_graph_context/follow_links for references and connections if needed.
+5. Use read_doc ONLY for non-attached files if needed.
 6. For changes: ALWAYS use propose_edit/create_doc with COMPLETE content—NEVER output content/JSON directly.
 7. After tools: Provide brief natural language summary only.
 
 ATTACHED CONTENT RULES:
 - Skip read_doc for attached files—use provided content.
-- Still search_docs for related files.
-- Still follow_links if attached content references others.
+- Still search_docs/search_tags/list_docs for related files.
+- Still follow_links/get_backlinks/get_graph_context if attached content references others.
 
 TOOL USAGE RULES:
 - NEVER output structured data or file content.
@@ -470,10 +470,12 @@ ${
 		const editSystem: ModelMessage = {
 			role: "system",
 			content: `CRITICAL WORKFLOW (TOOLS FIRST) for editing ${path}:
-1. ALWAYS use read_doc to get current content.
-2. Then use propose_edit with COMPLETE updated content.
-3. NEVER output content directly—use propose_edit.
-4. After tool: Provide brief summary only.
+1. ALWAYS use list_docs/search_docs/search_tags to find relevant files if needed.
+2. Use follow_links/get_backlinks/get_graph_context for additional context/connections.
+3. ALWAYS use read_doc to get current content.
+4. Then use propose_edit with COMPLETE updated content.
+5. NEVER output content directly—use propose_edit.
+6. After tool: Provide brief summary only.
 
 TOOL USAGE RULES:
 - Maintain existing structure/style unless requested.
@@ -494,7 +496,9 @@ MISTRAL-SPECIFIC:
 		};
 
 		const streamingMessage = this.createStreamingMessage();
-		streamingMessage.setPlaceholder("📖 Reading file and preparing changes...");
+		streamingMessage.setPlaceholder(
+			"📂 Gathering context and preparing changes..."
+		);
 
 		try {
 			const result = await this.plugin.aiService!.streamChat(
