@@ -35,6 +35,7 @@
 		"@ai-sdk/openai-compatible": "^1.0.7",
 		"@ai-sdk/provider": "^2.0.0",
 		"@ai-sdk/provider-utils": "^3.0.3",
+		"@modelcontextprotocol/sdk": "^1.17.3",
 		"ai": "^5.0.11",
 		"zod": "^4.0.17"
 	}
