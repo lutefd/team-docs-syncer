@@ -48,7 +48,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 	return {
 		search_docs: tool({
 			description:
-				"Search markdown documents by title/frontmatter and return brief snippets. ALWAYS use this first to understand available documents before reading or editing.",
+				"Search internal Obsidian team docs by title/frontmatter and return brief snippets. This tool is ONLY for team documentation within Obsidian. For external searches, web content, or broader functionality, prefer MCP tools if available. ALWAYS use this first to understand available team documents before reading or editing.",
 			inputSchema: z.object({
 				query: z.string(),
 				k: z.number().int().min(1).max(10).optional(),
@@ -94,7 +94,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		read_doc: tool({
 			description:
-				"Read full markdown content for a given path within the team docs folder. ALWAYS read documents before proposing edits to understand current content.",
+				"Read full markdown content for internal Obsidian team docs only. This tool is restricted to team documentation within the configured sync folder. For reading external files, web content, or other document types, use MCP tools if available. ALWAYS read documents before proposing edits to understand current content.",
 			inputSchema: z.object({ path: z.string() }),
 			execute: async ({ path }: { path: string }) => {
 				return withRetry(async () => {
@@ -134,7 +134,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		follow_links: tool({
 			description:
-				"Extract and follow internal document links from markdown content to gather comprehensive context. Use when you need to follow references to other documents. Supports recursion up to maxDepth.",
+				"Extract and follow internal Obsidian team doc links from markdown content to gather comprehensive context. This tool only works within the team docs folder. For following external links, web links, or broader link analysis, use MCP tools if available. Use when you need to follow references to other team documents. Supports recursion up to maxDepth.",
 			inputSchema: z.object({
 				content: z.string().describe("Markdown content to extract links from"),
 				currentPath: z.string().describe("Current document path for context"),
@@ -243,7 +243,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		propose_edit: tool({
 			description:
-				"Indicate that you want to edit a file. CRITICAL: You MUST read the file first using read_doc, then provide the complete updated file content in the 'content' parameter. Never edit without reading first. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
+				"Edit internal Obsidian team docs only. This tool is restricted to team documentation within the configured sync folder. For editing external files, code files, or other document types, use MCP tools if available. CRITICAL: You MUST read the file first using read_doc, then provide the complete updated file content in the 'content' parameter. Never edit without reading first. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
 			inputSchema: z.object({
 				path: z.string().describe("Path to the file to edit"),
 				content: z
@@ -315,7 +315,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		create_doc: tool({
 			description:
-				"Create a new markdown file within the team docs folder. You must provide the complete file content in the 'content' parameter. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
+				"Create new markdown files within the internal Obsidian team docs folder only. This tool is restricted to team documentation within the configured sync folder. For creating external files, code files, or other document types, use MCP tools if available. You must provide the complete file content in the 'content' parameter. NEVER output JSON or structured data directly - ALWAYS use this tool instead.",
 			inputSchema: z.object({
 				path: z
 					.string()
@@ -387,7 +387,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		list_docs: tool({
 			description:
-				"List files and folders within a given path in the team docs folder. Use to browse the structure before searching or reading.",
+				"List files and folders within internal Obsidian team docs folder only. This tool is restricted to team documentation within the configured sync folder. For listing external directories, system files, or broader file operations, use MCP tools if available. Use to browse the team docs structure before searching or reading.",
 			inputSchema: z.object({
 				path: z
 					.string()
@@ -482,7 +482,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		search_tags: tool({
 			description:
-				"Search for markdown documents containing a specific tag (e.g., '#project') or frontmatter key. Returns brief snippets. Use to find tagged content.",
+				"Search for tags within internal Obsidian team docs only. This tool is restricted to team documentation within the configured sync folder. For searching external tags, web content, or broader tag systems, use MCP tools if available. Search for markdown documents containing a specific tag (e.g., '#project') or frontmatter key. Returns brief snippets. Use to find tagged team content.",
 			inputSchema: z.object({
 				tag: z
 					.string()
@@ -553,7 +553,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		get_backlinks: tool({
 			description:
-				"Get documents that link back to the given path, with brief snippets. Use to understand references and context.",
+				"Get internal Obsidian team docs that link back to the given path, with brief snippets. This tool only works within the team docs folder. For analyzing external backlinks, web references, or broader link analysis, use MCP tools if available. Use to understand team document references and context.",
 			inputSchema: z.object({
 				path: z.string().describe("Path to get backlinks for"),
 				k: z.number().int().min(1).max(20).optional(),
@@ -623,7 +623,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		get_graph_context: tool({
 			description:
-				"Get a simple graph of linked documents starting from the given path, up to a maximum depth. Use to visualize connections.",
+				"Get a simple graph of linked internal Obsidian team docs starting from the given path, up to a maximum depth. This tool only works within the team docs folder. For analyzing external document graphs, web connections, or broader network analysis, use MCP tools if available. Use to visualize team document connections.",
 			inputSchema: z.object({
 				path: z.string().describe("Starting document path"),
 				maxDepth: z
