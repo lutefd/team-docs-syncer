@@ -1,11 +1,18 @@
 import { Component } from "obsidian";
 import TeamDocsPlugin from "../../../main";
-import { ProviderChooser, ProviderSelection } from "../ProviderChooser";
 import { MentionHandler } from "./MentionHandler";
+import { LinkHandler } from "./LinkHandler";
+import { MCPModal, MCPSelection } from "./MCPModal";
+import { ProviderChooser, ProviderSelection } from "../ProviderChooser";
 
 export interface ChatInputOptions {
-	onSend?: (message: string, providerSelection?: ProviderSelection) => void;
+	onSend?: (
+		message: string,
+		providerSelection?: ProviderSelection,
+		mcpSelection?: MCPSelection
+	) => void;
 	onProviderChange?: (selection: ProviderSelection) => void;
+	onMCPChange?: (selection: MCPSelection) => void;
 	placeholder?: string;
 	mode?: "compose" | "write" | "chat";
 }
@@ -17,9 +24,11 @@ export class ChatInput extends Component {
 	private containerEl: HTMLElement;
 	private inputEl: HTMLTextAreaElement;
 	private sendBtn: HTMLButtonElement;
+	private mcpBtn: HTMLButtonElement;
 	private providerChooser: ProviderChooser;
 	private mentionHandler: MentionHandler;
 	private currentProviderSelection?: ProviderSelection;
+	private currentMCPSelection: MCPSelection = { clientIds: [] };
 	private inputContainer: HTMLElement;
 	private rawContent: string = "";
 
@@ -71,7 +80,19 @@ export class ChatInput extends Component {
 			},
 		}) as HTMLTextAreaElement;
 
-		this.sendBtn = this.containerEl.createEl("button", {
+		const buttonContainer = this.containerEl.createDiv({
+			cls: "chatbot-button-container",
+		});
+
+		this.mcpBtn = buttonContainer.createEl("button", {
+			text: "MCP",
+			cls: "chatbot-mcp-btn",
+			attr: {
+				title: "Select MCP Servers",
+			},
+		});
+
+		this.sendBtn = buttonContainer.createEl("button", {
 			text: "Send",
 			cls: "chatbot-send",
 		});
@@ -89,6 +110,7 @@ export class ChatInput extends Component {
 
 	private setupEventListeners(): void {
 		this.sendBtn.onclick = () => this.handleSend();
+		this.mcpBtn.onclick = () => this.openMCPModal();
 
 		this.inputEl.addEventListener("keydown", (e) => {
 			if (this.mentionHandler.isActive()) {
@@ -126,6 +148,33 @@ export class ChatInput extends Component {
 
 	private debounceTimer?: number;
 
+	private openMCPModal(): void {
+		const modal = new MCPModal(this.plugin, {
+			initialSelection: this.currentMCPSelection,
+			onSelectionChange: (selection) => {
+				console.log("[ChatInput] MCP selection changed:", selection);
+				this.currentMCPSelection = selection;
+				this.updateMCPButtonState();
+
+				if (this.options.onMCPChange) {
+					this.options.onMCPChange(selection);
+				}
+			},
+		});
+		modal.open();
+	}
+
+	private updateMCPButtonState(): void {
+		const selectedCount = this.currentMCPSelection.clientIds.length;
+		if (selectedCount > 0) {
+			this.mcpBtn.textContent = `MCP (${selectedCount})`;
+			this.mcpBtn.addClass("has-selection");
+		} else {
+			this.mcpBtn.textContent = "MCP";
+			this.mcpBtn.removeClass("has-selection");
+		}
+	}
+
 	private updateRawContent(): void {
 		this.rawContent = this.inputEl.value || "";
 	}
@@ -141,7 +190,11 @@ export class ChatInput extends Component {
 		this.autoResizeInput();
 
 		if (this.options.onSend) {
-			this.options.onSend(message, this.currentProviderSelection);
+			this.options.onSend(
+				message,
+				this.currentProviderSelection,
+				this.currentMCPSelection
+			);
 		}
 	}
 
@@ -153,10 +206,25 @@ export class ChatInput extends Component {
 	}
 
 	/**
+	 * Get current MCP selection
+	 */
+	public getMCPSelection(): MCPSelection {
+		return this.currentMCPSelection;
+	}
+
+	/**
 	 * Set provider selection
 	 */
 	public setProviderSelection(selection: ProviderSelection): void {
 		this.providerChooser.setSelection(selection);
+	}
+
+	/**
+	 * Set MCP selection
+	 */
+	public setMCPSelection(selection: MCPSelection): void {
+		this.currentMCPSelection = selection;
+		this.updateMCPButtonState();
 	}
 
 	/**
@@ -202,6 +270,11 @@ export class ChatInput extends Component {
 	public refreshProviders(): void {
 		this.providerChooser.refresh();
 	}
+
+	/**
+	 * Refresh MCP chooser (useful when settings change)
+	 */
+	public refreshMCPs(): void {}
 
 	/**
 	 * Update mode and refresh provider models
