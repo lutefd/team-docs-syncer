@@ -1336,3 +1336,347 @@ Compact variant for smaller spaces */ .provider-chooser.compact {
 		padding: 0.5rem;
 	}
 }
+
+/* MCP Button and Modal Styles */
+.chatbot-button-container {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.chatbot-mcp-btn {
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 12px;
+	transition: all 0.2s ease;
+}
+
+.chatbot-mcp-btn:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.chatbot-mcp-btn.has-selection {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+.mcp-modal-fullscreen {
+	width: 90vw;
+	max-width: 1200px;
+	height: 80vh;
+	max-height: 800px;
+}
+
+.mcp-modal {
+	padding: 20px;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.mcp-modal h2 {
+	margin-bottom: 10px;
+	color: var(--text-normal);
+}
+
+.mcp-modal-description {
+	color: var(--text-muted);
+	margin-bottom: 20px;
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+.mcp-clients-container {
+	flex: 1;
+	margin-bottom: 20px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 10px;
+}
+
+.mcp-client-item {
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	margin-bottom: 8px;
+	background: var(--background-primary);
+}
+
+.mcp-client-item.mcp-client-disabled {
+	opacity: 0.6;
+	background: var(--background-secondary);
+}
+
+.mcp-client-checkbox-container {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.mcp-client-checkbox {
+	margin-top: 2px;
+}
+
+.mcp-client-label-container {
+	flex: 1;
+}
+
+.mcp-client-name {
+	font-weight: 500;
+	color: var(--text-normal);
+	display: block;
+	margin-bottom: 4px;
+}
+
+.mcp-client-status {
+	display: inline-block;
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-size: 11px;
+	font-weight: 500;
+	text-transform: uppercase;
+	margin-bottom: 4px;
+}
+
+.mcp-client-status.status-connected {
+	background: var(--color-green);
+	color: white;
+}
+
+.mcp-client-status.status-error {
+	background: var(--color-red);
+	color: white;
+}
+
+.mcp-client-status.status-disconnected {
+	background: var(--color-orange);
+	color: white;
+}
+
+.mcp-client-status.status-not-found {
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.mcp-client-transport {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.mcp-no-clients {
+	text-align: center;
+	color: var(--text-muted);
+	font-style: italic;
+	padding: 20px;
+}
+
+.mcp-modal-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+	border-top: 1px solid var(--background-modifier-border);
+	padding-top: 15px;
+}
+
+/* Legacy MCP Chooser Styles */
+.mcp-chooser {
+	padding: 8px 12px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	font-size: 13px;
+	margin-bottom: 8px;
+}
+
+.mcp-chooser-header {
+	margin-bottom: 8px;
+}
+
+.mcp-label {
+	font-weight: 500;
+	color: var(--text-muted);
+	font-size: 12px;
+	margin: 0;
+}
+
+.mcp-checkboxes {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 12px;
+	max-height: 120px;
+	overflow-y: auto;
+}
+
+.mcp-checkbox-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.mcp-checkbox {
+	margin: 0;
+	cursor: pointer;
+}
+
+.mcp-checkbox-label {
+	cursor: pointer;
+	color: var(--text-normal);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.mcp-connection-status {
+	font-size: 10px;
+}
+
+.mcp-status {
+	margin-top: 8px;
+	font-size: 11px;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.mcp-status-none {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+.mcp-status-selected {
+	color: var(--text-accent);
+	font-weight: 500;
+}
+
+.no-mcp-servers {
+	text-align: center;
+	padding: 12px;
+	font-size: 12px;
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+/* Compact MCP chooser for narrow views */
+.mcp-chooser.compact {
+	padding: 6px 8px;
+	font-size: 11px;
+}
+
+.mcp-chooser.compact .mcp-checkboxes {
+	gap: 6px 8px;
+	max-height: 80px;
+}
+
+.mcp-chooser.compact .mcp-checkbox-wrapper {
+	font-size: 11px;
+	gap: 4px;
+}
+
+.mcp-chooser.compact .mcp-label {
+	font-size: 11px;
+	margin-bottom: 6px;
+}
+
+/* Narrow view adaptations */
+.chatbot-view.narrow .mcp-chooser {
+	padding: 6px 8px;
+	margin-bottom: 6px;
+}
+
+.chatbot-view.narrow .mcp-checkboxes {
+	flex-direction: column;
+	gap: 6px;
+	max-height: 100px;
+}
+
+.chatbot-view.narrow .mcp-checkbox-wrapper {
+	font-size: 12px;
+}
+
+/* Very narrow view adaptations */
+.chatbot-view.very-narrow .mcp-chooser {
+	padding: 4px 6px;
+	margin-bottom: 4px;
+}
+
+.chatbot-view.very-narrow .mcp-checkboxes {
+	flex-direction: column;
+	gap: 4px;
+	max-height: 80px;
+}
+
+.chatbot-view.very-narrow .mcp-checkbox-wrapper {
+	font-size: 11px;
+	gap: 4px;
+}
+
+.chatbot-view.very-narrow .mcp-label {
+	font-size: 10px;
+	margin-bottom: 4px;
+}
+
+.chatbot-view.very-narrow .mcp-status {
+	font-size: 10px;
+	margin-top: 4px;
+}
+
+/* Extremely narrow view adaptations */
+.chatbot-view.extremely-narrow .mcp-chooser {
+	padding: 4px;
+	margin-bottom: 4px;
+}
+
+.chatbot-view.extremely-narrow .mcp-checkboxes {
+	flex-direction: column;
+	gap: 3px;
+	max-height: 60px;
+}
+
+.chatbot-view.extremely-narrow .mcp-checkbox-wrapper {
+	font-size: 10px;
+	gap: 3px;
+}
+
+.chatbot-view.extremely-narrow .mcp-label {
+	font-size: 9px;
+	margin-bottom: 3px;
+}
+
+.chatbot-view.extremely-narrow .mcp-status {
+	font-size: 9px;
+	margin-top: 3px;
+}
+
+.chatbot-view.extremely-narrow .mcp-connection-status {
+	font-size: 8px;
+}
+
+/* Mobile responsive */
+@media (max-width: 520px) {
+	.mcp-chooser {
+		padding: 6px;
+		margin-bottom: 6px;
+	}
+	
+	.mcp-checkboxes {
+		flex-direction: column;
+		gap: 4px;
+		max-height: 80px;
+	}
+	
+	.mcp-checkbox-wrapper {
+		font-size: 11px;
+	}
+	
+	.mcp-label {
+		font-size: 10px;
+	}
+}
