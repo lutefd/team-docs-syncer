@@ -43,17 +43,21 @@ export class AiService {
 	private buildSystemPrompt(mode: Mode, isOllama: boolean, teamRoot: string) {
 		const workflowEnhancements =
 			mode === "compose" || mode === "write"
-				? `\n\nIMPORTANT WORKFLOW (TOOLS FIRST):
-- ALWAYS start by using list_docs to browse folder structure or search_docs/search_tags to find relevant documents.
-- Use list_docs for directory listings, search_tags for tagged/frontmatter content, get_backlinks for incoming references, get_graph_context for linked document graphs, and follow_links to extract and follow internal links.
-- ALWAYS use read_doc to get full content before answering questions about specific files, following links, or making edits.
-- If results lack context, use read_doc for details, or get_backlinks/get_graph_context/follow_links for connections.
-- For edits: read_doc first, then propose_edit with the COMPLETE updated content.
-- For new files: use create_doc with the COMPLETE content.
-- NEVER guess file contents—always read first.
-- Wrap your thinking in <think> tags for reasoning steps, then provide your final answer in <finalAnswer> tags.
-- After tools, provide ONLY a brief summary—reference files with [[path/to/file.md|filename]].
-- Do NOT include file content in responses; tools handle operations.${
+				? `\n\nIMPORTANT WORKFLOW (PRIORITIZE MCP TOOLS):
+- FIRST: Evaluate if MCP tools provide better functionality for the task (external files, web content, broader capabilities)
+- IF MCP tools are better suited: Use MCP tools instead of internal Obsidian tools
+- IF working with internal team docs: Use Obsidian tools (list_docs, search_docs, read_doc, etc.)
+- Internal Obsidian tools are ONLY for team documentation within the configured sync folder
+- For external searches, file operations, web content, or broader functionality: PREFER MCP tools
+- ALWAYS start by using appropriate tools to browse/search (MCP tools for external, Obsidian tools for team docs)
+- ALWAYS read content before answering questions about specific files or making edits
+- If results lack context, use appropriate tools for details or connections
+- For edits: read first, then use appropriate edit tool with COMPLETE updated content
+- For new files: use appropriate create tool with COMPLETE content
+- NEVER guess file contents—always read first
+- Wrap your thinking in <think> tags for reasoning steps, then provide your final answer in <finalAnswer> tags
+- After tools, provide ONLY a brief summary—reference files appropriately
+- Do NOT include file content in responses; tools handle operations${
 						isOllama
 							? `\n\nOLLAMA-SPECIFIC (MANDATORY):
 - Tool usage is REQUIRED—do not answer from memory.
@@ -61,14 +65,14 @@ export class AiService {
 - EXECUTE tools when requested—do not describe them.`
 							: ""
 				  }`
-				: `\n\nIMPORTANT: Answer based on provided context and attached files. You do NOT have access to tools. Be helpful within the team docs scope.`;
+				: `\n\nIMPORTANT: Answer based on provided context and attached files. You do NOT have access to tools in this mode. Be helpful within the appropriate scope.`;
 
 		const baseInstructions =
 			mode === "compose"
-				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use tools like list_docs, search_docs, search_tags, read_doc, follow_links, get_backlinks, and get_graph_context to find info. For edits, use propose_edit after reading with read_doc. Be concise and cite with [[path/to/file.md|filename]]. Respond in the user's language unless translating.`
+				? `You are a helpful assistant with access to both internal Obsidian team docs and external MCP tools. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools (list_docs, search_docs, read_doc, etc.) are ONLY for team documentation within (${teamRoot}). For external content, web searches, broader file operations, or enhanced capabilities, use MCP tools. Be concise and cite appropriately. Respond in the user's language unless translating.`
 				: mode === "write"
-				? `You help edit Markdown files strictly inside (${teamRoot}). Use tools like list_docs, search_docs, search_tags, read_doc, follow_links, get_backlinks, and get_graph_context for context. For edits: read_doc first, then propose_edit with full content. For new files: create_doc with full content. After tools, provide brief summary only.`
-				: `You are a helpful assistant for Obsidian Team Docs. Only discuss files within (${teamRoot}). Answer based on context. Be concise and cite with [[path/to/file.md|filename]].`;
+				? `You help with document editing using the most appropriate tools available. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools are ONLY for team docs within (${teamRoot}). For external files, code files, or broader editing capabilities, use MCP tools. Always read content first, then use appropriate edit/create tools with full content. After tools, provide brief summary only.`
+				: `You are a helpful assistant with knowledge of internal team docs within (${teamRoot}) and external capabilities through MCP tools. Answer based on context and use the most appropriate tools when available. Be concise and cite appropriately.`;
 
 		return workflowEnhancements + "\n\n" + baseInstructions;
 	}
@@ -418,14 +422,12 @@ Tool outputs: ${toolContext}`;
 								const sanitizedToolName = tool.name
 									.replace(/[^a-zA-Z0-9_.-]/g, "_")
 									.replace(/-/g, "_");
-								return `- ${sanitizedClientName}_${sanitizedToolName}: ${
-									tool.description || "No description"
-								}`;
+								return `- ${sanitizedClientName}_${sanitizedToolName}: ${tool.description || "No description"}`;
 							});
 						})
 						.join("\n");
 
-					mcpToolsInfo = `\n\nADDITIONAL MCP TOOLS AVAILABLE:\n${toolsList}\n\nUse MCP tools when relevant to extend your capabilities beyond team docs.`;
+					mcpToolsInfo = `\n\nMCP TOOLS AVAILABLE (PRIORITIZE WHEN APPROPRIATE):\n${toolsList}\n\nCRITICAL: Use MCP tools when they provide better functionality than internal Obsidian tools. MCP tools are preferred for:\n- External file operations (outside team docs folder)\n- Web content and searches\n- Code files and broader programming tasks\n- Enhanced capabilities beyond basic markdown operations\n- Any task where MCP tools offer superior functionality\n\nInternal Obsidian tools should ONLY be used for team documentation within the configured sync folder.`;
 				}
 			} catch (error) {
 				console.error("Failed to get MCP tools info:", error);
