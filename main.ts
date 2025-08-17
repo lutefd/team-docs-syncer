@@ -15,6 +15,7 @@ import { AiService } from "./src/services/AiService";
 import { MarkdownIndexService } from "./src/services/MarkdownIndexService";
 import { ChatSessionService } from "./src/services/ChatSessionService";
 import { CHATBOT_VIEW, ChatbotView } from "./src/ui/ChatbotView";
+import { MCPManager } from "./src/managers/MCPManager";
 
 /**
  * Main plugin class for Team Docs Git Sync functionality
@@ -30,6 +31,7 @@ export default class TeamDocsPlugin extends Plugin {
 	aiService: AiService;
 	markdownIndexService: MarkdownIndexService;
 	chatSessionService: ChatSessionService;
+	mcpManager: MCPManager;
 	private syncInterval: ReturnType<typeof setInterval> | null = null;
 
 	async onload() {
@@ -51,16 +53,25 @@ export default class TeamDocsPlugin extends Plugin {
 			this.reservationManager.syncReservationsFromGit();
 		}, 3000);
 
+		setTimeout(async () => {
+			await this.mcpManager.initialize();
+		}, 1000);
+
 		console.log("Team Docs Git Sync plugin loaded");
 	}
 
-	onunload() {
+	async onunload() {
 		if (this.syncInterval) {
 			clearInterval(this.syncInterval);
 		}
 		this.reservationManager.getMyReservations().forEach(async (res) => {
 			await this.reservationManager.releaseReservationByPath(res.filePath);
 		});
+
+		if (this.mcpManager) {
+			await this.mcpManager.shutdown();
+		}
+
 		console.log("Team Docs Git Sync plugin unloaded");
 	}
 
@@ -107,6 +118,10 @@ export default class TeamDocsPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 		this.setupAutoSync();
+
+		if (this.mcpManager) {
+			await this.mcpManager.refreshClients();
+		}
 	}
 
 	private initializeServices() {
@@ -120,6 +135,7 @@ export default class TeamDocsPlugin extends Plugin {
 		this.aiService = new AiService(this);
 		this.markdownIndexService = new MarkdownIndexService(this.app, this);
 		this.chatSessionService = new ChatSessionService();
+		this.mcpManager = new MCPManager(this);
 
 		this.addChild(this.reservationManager);
 		this.addChild(this.statusIndicator);
