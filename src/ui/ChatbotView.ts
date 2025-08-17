@@ -5,6 +5,7 @@ import { ChatSessionsModal } from "./ChatSessionsModal";
 import { DiffModal } from "./DiffModal";
 import { EditTargetModal } from "./EditTargetModal";
 import { ProviderSelection } from "./ProviderChooser";
+import { MCPSelection } from "./MCPChooser";
 import { MessageRenderer } from "./components/MessageRenderer";
 import { ChatInput } from "./components/ChatInput";
 import { LinkHandler } from "./components/LinkHandler";
@@ -29,6 +30,7 @@ export class ChatbotView extends ItemView {
 	private sessionManager: SessionManager;
 	private fileContentExtractor: FileContentExtractor;
 	private currentProviderSelection?: ProviderSelection;
+	private currentMCPSelection?: MCPSelection;
 	private resizeObserver?: ResizeObserver;
 
 	constructor(leaf: WorkspaceLeaf, plugin: TeamDocsPlugin) {
@@ -102,10 +104,13 @@ export class ChatbotView extends ItemView {
 			cls: "chatbot-composer-container",
 		});
 		this.chatInput = new ChatInput(composerContainer, this.plugin, {
-			onSend: (message, providerSelection) =>
-				this.handleSend(message, providerSelection),
+			onSend: (message, providerSelection, mcpSelection) =>
+				this.handleSend(message, providerSelection, mcpSelection),
 			onProviderChange: (selection) => {
 				this.currentProviderSelection = selection;
+			},
+			onMCPChange: (selection) => {
+				this.currentMCPSelection = selection;
 			},
 			placeholder: "Ask about your team docs...",
 			mode: this.mode,
@@ -182,7 +187,8 @@ export class ChatbotView extends ItemView {
 
 	private async handleSend(
 		message: string,
-		providerSelection?: ProviderSelection
+		providerSelection?: ProviderSelection,
+		mcpSelection?: MCPSelection
 	): Promise<void> {
 		if (!providerSelection) {
 			new Notice("Please select an AI provider and model.");
@@ -217,11 +223,11 @@ export class ChatbotView extends ItemView {
 		}
 
 		if (this.mode === "compose") {
-			await this.handleComposeMode(providerSelection);
+			await this.handleComposeMode(providerSelection, mcpSelection);
 		} else if (this.mode === "write") {
-			await this.handleWriteMode(providerSelection);
+			await this.handleWriteMode(providerSelection, mcpSelection);
 		} else if (this.mode === "chat") {
-			await this.handleChatMode(providerSelection);
+			await this.handleChatMode(providerSelection, mcpSelection);
 		}
 	}
 
@@ -257,9 +263,7 @@ export class ChatbotView extends ItemView {
 					const content = await this.app.vault.read(file);
 					attachedFiles.push(`File: ${path}\n\n${content}`);
 				}
-			} catch (error) {
-				// Silent fail for missing files
-			}
+			} catch (error) {}
 		}
 
 		if (attachedFiles.length > 0) {
@@ -293,7 +297,8 @@ export class ChatbotView extends ItemView {
 	}
 
 	private async handleComposeMode(
-		providerSelection: ProviderSelection
+		providerSelection: ProviderSelection,
+		mcpSelection?: MCPSelection
 	): Promise<void> {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
@@ -382,7 +387,8 @@ ${
 				(thoughts) => streamingMessage.addThinkingSection(thoughts),
 				(placeholder) => streamingMessage.setPlaceholder(placeholder),
 				providerSelection.provider,
-				providerSelection.modelId
+				providerSelection.modelId,
+				mcpSelection
 			);
 
 			await this.handleStreamResult(result, streamingMessage, session);
@@ -393,7 +399,8 @@ ${
 	}
 
 	private async handleChatMode(
-		providerSelection: ProviderSelection
+		providerSelection: ProviderSelection,
+		mcpSelection?: MCPSelection
 	): Promise<void> {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
@@ -413,7 +420,8 @@ ${
 				(thoughts) => streamingMessage.addThinkingSection(thoughts),
 				(placeholder) => streamingMessage.setPlaceholder(placeholder),
 				providerSelection.provider,
-				providerSelection.modelId
+				providerSelection.modelId,
+				mcpSelection
 			);
 
 			await this.handleStreamResult(result, streamingMessage, session);
@@ -424,7 +432,8 @@ ${
 	}
 
 	private async handleWriteMode(
-		providerSelection: ProviderSelection
+		providerSelection: ProviderSelection,
+		mcpSelection?: MCPSelection
 	): Promise<void> {
 		const messages = this.plugin.chatSessionService.getActive()?.messages;
 		const lastMessage =
@@ -451,12 +460,17 @@ ${
 
 		if (!picked) return;
 
-		await this.generateEditWithStreamChat(picked, providerSelection);
+		await this.generateEditWithStreamChat(
+			picked,
+			providerSelection,
+			mcpSelection
+		);
 	}
 
 	private async generateEditWithStreamChat(
 		path: string,
-		providerSelection: ProviderSelection
+		providerSelection: ProviderSelection,
+		mcpSelection?: MCPSelection
 	): Promise<void> {
 		const session = this.plugin.chatSessionService.getActive();
 		if (!session) return;
@@ -513,7 +527,8 @@ MISTRAL-SPECIFIC:
 				(thoughts) => streamingMessage.addThinkingSection(thoughts),
 				(placeholder) => streamingMessage.setPlaceholder(placeholder),
 				providerSelection.provider,
-				providerSelection.modelId
+				providerSelection.modelId,
+				mcpSelection
 			);
 
 			await this.handleStreamResult(result, streamingMessage, session);
