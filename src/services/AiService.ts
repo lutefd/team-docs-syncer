@@ -43,9 +43,10 @@ export class AiService {
 		const workflowEnhancements =
 			mode === "compose" || mode === "write"
 				? `\n\nIMPORTANT WORKFLOW (TOOLS FIRST):
-- ALWAYS start by using search_docs to find relevant documents.
-- ALWAYS use read_doc to get full content before answering questions about specific files or making edits.
-- If search results lack context, use read_doc for details.
+- ALWAYS start by using list_docs to browse folder structure or search_docs/search_tags to find relevant documents.
+- Use list_docs for directory listings, search_tags for tagged/frontmatter content, get_backlinks for incoming references, get_graph_context for linked document graphs, and follow_links to extract and follow internal links.
+- ALWAYS use read_doc to get full content before answering questions about specific files, following links, or making edits.
+- If results lack context, use read_doc for details, or get_backlinks/get_graph_context/follow_links for connections.
 - For edits: read_doc first, then propose_edit with the COMPLETE updated content.
 - For new files: use create_doc with the COMPLETE content.
 - NEVER guess file contents—always read first.
@@ -55,7 +56,7 @@ export class AiService {
 						isOllama
 							? `\n\nOLLAMA-SPECIFIC (MANDATORY):
 - Tool usage is REQUIRED—do not answer from memory.
-- Sequence: search_docs → read_doc → (propose_edit or create_doc if needed) → answer.
+- Sequence: list_docs/search_docs/search_tags → read_doc → follow_links/get_backlinks/get_graph_context (if needed) → (propose_edit or create_doc if needed) → answer.
 - EXECUTE tools when requested—do not describe them.`
 							: ""
 				  }`
@@ -63,9 +64,9 @@ export class AiService {
 
 		const baseInstructions =
 			mode === "compose"
-				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use search_docs/read_doc to find info. For edits, use propose_edit after reading with read_doc. Be concise and cite with [[path/to/file.md|filename]]. Respond in the user's language unless translating.`
+				? `You are a helpful assistant for Obsidian Team Docs. Only discuss files within the team sync folder (${teamRoot}). Use tools like list_docs, search_docs, search_tags, read_doc, follow_links, get_backlinks, and get_graph_context to find info. For edits, use propose_edit after reading with read_doc. Be concise and cite with [[path/to/file.md|filename]]. Respond in the user's language unless translating.`
 				: mode === "write"
-				? `You help edit Markdown files strictly inside (${teamRoot}). For edits: read_doc first, then propose_edit with full content. For new files: create_doc with full content. After tools, provide brief summary only.`
+				? `You help edit Markdown files strictly inside (${teamRoot}). Use tools like list_docs, search_docs, search_tags, read_doc, follow_links, get_backlinks, and get_graph_context for context. For edits: read_doc first, then propose_edit with full content. For new files: create_doc with full content. After tools, provide brief summary only.`
 				: `You are a helpful assistant for Obsidian Team Docs. Only discuss files within (${teamRoot}). Answer based on context. Be concise and cite with [[path/to/file.md|filename]].`;
 
 		return workflowEnhancements + "\n\n" + baseInstructions;
@@ -85,6 +86,30 @@ export class AiService {
 			} else if (tr.toolName === "read_doc") {
 				const r = tr.output as { path?: string };
 				if (r?.path) sources.add(r.path);
+			} else if (tr.toolName === "follow_links") {
+				const r = tr.output as { followedDocs?: Array<{ path: string }> };
+				r.followedDocs?.forEach((doc) => {
+					if (doc.path) sources.add(doc.path);
+				});
+			} else if (tr.toolName === "list_docs") {
+				const r = tr.output as { items?: Array<{ path: string }> };
+				r.items?.forEach((item) => {
+					if (item.path) sources.add(item.path);
+				});
+			} else if (tr.toolName === "search_tags") {
+				(tr.output as Array<{ path: string }>)?.forEach((r) =>
+					r.path ? sources.add(r.path) : null
+				);
+			} else if (tr.toolName === "get_backlinks") {
+				const r = tr.output as { backlinks?: Array<{ path: string }> };
+				r.backlinks?.forEach((bl) => {
+					if (bl.path) sources.add(bl.path);
+				});
+			} else if (tr.toolName === "get_graph_context") {
+				const r = tr.output as { nodes?: Array<{ id: string }> };
+				r.nodes?.forEach((node) => {
+					if (node.id) sources.add(node.id);
+				});
 			} else if (tr.toolName === "propose_edit") {
 				const r = tr.output as {
 					path?: string;
@@ -154,27 +179,39 @@ export class AiService {
 				}
 
 				if (result.toolCalls?.length && onStatus) {
-					const toolName = result.toolCalls[0].toolName;
-					const statusMap: Record<string, string> = {
-						search_docs: "🔍 Searching documents...",
-						read_doc: "📖 Reading document...",
-						follow_links: "🔗 Following links...",
-						propose_edit: "✏️ Writing document...",
-						create_doc: "📄 Creating document...",
-					};
-					onStatus(statusMap[toolName] || "🔧 Using tools...");
+					// Combine statuses for multiple tools in the step
+					const statuses = result.toolCalls
+						.map((tc) => {
+							const toolName = tc.toolName;
+							const statusMap: Record<string, string> = {
+								search_docs: "🔍 Searching documents...",
+								read_doc: "📖 Reading document...",
+								follow_links: "🔗 Following links...",
+								propose_edit: "✏️ Writing document...",
+								create_doc: "📄 Creating document...",
+								list_docs: "📂 Listing documents...",
+								search_tags: "🏷️ Searching tags...",
+								get_backlinks: "🔙 Getting backlinks...",
+								get_graph_context: "🌐 Building graph context...",
+							};
+							return statusMap[toolName] || `🔧 Using ${toolName}...`;
+						})
+						.join(" ");
+					onStatus(statuses);
 				}
 
 				if (result.toolCalls?.length && onThoughts) {
-					onThoughts(
-						result.toolCalls
-							.map((tc) => `\n🔧 Executing ${tc.toolName}...\n`)
-							.join("")
-					);
-				}
+					const thoughtsText = result.toolCalls
+						.map((tc) => `\n🔧 Executing ${tc.toolName}...\n`)
+						.join("");
+					onThoughts(thoughtsText);
 
-				if (result.toolCalls?.length && onPlaceholder) {
-					onPlaceholder("🔧 Analyzing tools...");
+					if (onStatus) {
+						const syncStatus = result.toolCalls
+							.map((tc) => `Executing ${tc.toolName}...`)
+							.join(" ");
+						onStatus(syncStatus);
+					}
 				}
 			},
 		});
@@ -194,7 +231,7 @@ export class AiService {
 				onPlaceholder &&
 				!inThinking
 			) {
-				onPlaceholder("🔧 Analyzing tools...");
+				onPlaceholder("💭 Processing...");
 			}
 		};
 
