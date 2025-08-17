@@ -14,11 +14,36 @@ export interface TeamDocsSettings {
 	attachmentsSubdir: string;
 
 	ai: AiProviderSettings;
+	mcpClients: MCPClientConfig[];
 
 	openaiApiKey?: string;
 	openaiModel?: string;
 	openaiTemperature: number;
 	openaiMaxTokens: number;
+}
+
+/**
+ * MCP transport types
+ */
+export enum MCP_TRANSPORT_TYPE {
+	STDIO = "stdio",
+	HTTP = "streamable-http",
+	SSE = "sse",
+}
+
+/**
+ * MCP client configuration interface
+ */
+export interface MCPClientConfig {
+	id: string;
+	name: string;
+	enabled: boolean;
+	transport: {
+		type: MCP_TRANSPORT_TYPE;
+		command?: string;
+		args?: string;
+		url?: string;
+	};
 }
 
 /**
@@ -35,6 +60,7 @@ export const DEFAULT_SETTINGS: TeamDocsSettings = {
 	attachmentsSubdir: "attachments",
 
 	ai: DEFAULT_AI_PROVIDER_SETTINGS,
+	mcpClients: [],
 
 	// Legacy settings (for migration)
 	openaiApiKey: "",

@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, FileSystemAdapter } from "obsidian";
 import TeamDocsPlugin from "../../main";
+import { MCPClientConfig, MCP_TRANSPORT_TYPE } from "../types/Settings";
 
 /**
  * Settings tab for configuring the Team Docs plugin
@@ -258,5 +259,239 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		this.createMCPServersSection(containerEl);
+	}
+
+	private createMCPServersSection(containerEl: HTMLElement) {
+		containerEl.createEl("h3", { text: "MCP Servers" });
+		containerEl.createEl("p", {
+			text: "Configure Model Context Protocol servers to extend AI capabilities with external tools and resources.",
+			cls: "setting-item-description",
+		});
+
+		const mcpContainer = containerEl.createDiv();
+		mcpContainer.addClass("mcp-clients-container");
+
+		this.renderMCPClients(mcpContainer);
+
+		new Setting(containerEl)
+			.setName("Add MCP Server")
+			.setDesc("Add a new MCP server configuration")
+			.addButton((button) =>
+				button
+					.setButtonText("Add Server")
+					.setCta()
+					.onClick(() => {
+						this.addNewMCPClient(mcpContainer);
+					})
+			);
+	}
+
+	private renderMCPClients(container: HTMLElement) {
+		container.empty();
+
+		this.plugin.settings.mcpClients.forEach((client, index) => {
+			this.renderMCPClient(container, client, index);
+		});
+	}
+
+	private renderMCPClient(
+		container: HTMLElement,
+		client: MCPClientConfig,
+		index: number
+	) {
+		const clientContainer = container.createDiv();
+		clientContainer.addClass("mcp-client-container");
+		clientContainer.style.border =
+			"1px solid var(--background-modifier-border)";
+		clientContainer.style.borderRadius = "8px";
+		clientContainer.style.padding = "16px";
+		clientContainer.style.marginBottom = "16px";
+		clientContainer.style.backgroundColor = "var(--background-secondary)";
+
+		const headerDiv = clientContainer.createDiv();
+		headerDiv.style.display = "flex";
+		headerDiv.style.justifyContent = "space-between";
+		headerDiv.style.alignItems = "center";
+		headerDiv.style.marginBottom = "12px";
+
+		const titleEl = headerDiv.createEl("h4", {
+			text: client.name || `MCP Server ${index + 1}`,
+		});
+		titleEl.style.margin = "0";
+
+		const deleteButton = headerDiv.createEl("button", { text: "Delete" });
+		deleteButton.addClass("mod-warning");
+		deleteButton.style.fontSize = "12px";
+		deleteButton.style.padding = "4px 8px";
+		deleteButton.onclick = () => {
+			this.deleteMCPClient(index, container);
+		};
+
+		new Setting(clientContainer)
+			.setName("Enabled")
+			.setDesc("Enable this MCP server")
+			.addToggle((toggle) =>
+				toggle.setValue(client.enabled).onChange(async (value) => {
+					this.plugin.settings.mcpClients[index].enabled = value;
+					await this.saveSettingsAndRefresh();
+				})
+			);
+
+		new Setting(clientContainer)
+			.setName("Server Name")
+			.setDesc("Display name for this MCP server")
+			.addText((text) =>
+				text
+					.setPlaceholder("My MCP Server")
+					.setValue(client.name)
+					.onChange(async (value) => {
+						this.plugin.settings.mcpClients[index].name = value;
+						await this.saveSettingsAndRefresh();
+						titleEl.textContent = value || `MCP Server ${index + 1}`;
+					})
+			);
+
+		new Setting(clientContainer)
+			.setName("Transport Type")
+			.setDesc("How to connect to the MCP server")
+			.addDropdown((dropdown) => {
+				dropdown
+					.addOption(MCP_TRANSPORT_TYPE.STDIO, "STDIO (Local Process)")
+					.addOption(MCP_TRANSPORT_TYPE.HTTP, "HTTP (Web Server)")
+					.addOption(MCP_TRANSPORT_TYPE.SSE, "SSE (Server-Sent Events)")
+					.setValue(client.transport.type)
+					.onChange(async (value: MCP_TRANSPORT_TYPE) => {
+						this.plugin.settings.mcpClients[index].transport.type = value;
+						this.plugin.settings.mcpClients[index].transport.command = "";
+						this.plugin.settings.mcpClients[index].transport.args = "";
+						this.plugin.settings.mcpClients[index].transport.url = "";
+						await this.saveSettingsAndRefresh();
+						this.renderTransportFields(
+							clientContainer,
+							this.plugin.settings.mcpClients[index],
+							index
+						);
+					});
+			});
+
+		this.renderTransportFields(clientContainer, client, index);
+	}
+
+	private renderTransportFields(
+		container: HTMLElement,
+		client: MCPClientConfig,
+		index: number
+	) {
+		let commandSetting = container.querySelector(
+			".transport-field-command"
+		) as HTMLElement;
+		let argsSetting = container.querySelector(
+			".transport-field-args"
+		) as HTMLElement;
+		let urlSetting = container.querySelector(
+			".transport-field-url"
+		) as HTMLElement;
+
+		if (!commandSetting) {
+			const setting = new Setting(container)
+				.setName("Command")
+				.setDesc("Executable command to run the MCP server")
+				.addText((text) =>
+					text
+						.setPlaceholder("node")
+						.setValue(client.transport.command || "")
+						.onChange(async (value) => {
+							this.plugin.settings.mcpClients[index].transport.command = value;
+							await this.saveSettingsAndRefresh();
+						})
+				);
+			setting.settingEl.addClass("transport-field");
+			setting.settingEl.addClass("transport-field-command");
+			commandSetting = setting.settingEl;
+		}
+
+		if (!argsSetting) {
+			const setting = new Setting(container)
+				.setName("Arguments")
+				.setDesc("Command line arguments (space-separated)")
+				.addText((text) =>
+					text
+						.setPlaceholder("/path/to/mcp/server.js")
+						.setValue(client.transport.args || "")
+						.onChange(async (value) => {
+							this.plugin.settings.mcpClients[index].transport.args = value;
+							await this.saveSettingsAndRefresh();
+						})
+				);
+			setting.settingEl.addClass("transport-field");
+			setting.settingEl.addClass("transport-field-args");
+			argsSetting = setting.settingEl;
+		}
+
+		if (!urlSetting) {
+			const setting = new Setting(container)
+				.setName("Server URL")
+				.setDesc("URL of the MCP server")
+				.addText((text) =>
+					text
+						.setPlaceholder("http://localhost:8080/mcp")
+						.setValue(client.transport.url || "")
+						.onChange(async (value) => {
+							this.plugin.settings.mcpClients[index].transport.url = value;
+							await this.saveSettingsAndRefresh();
+						})
+				);
+			setting.settingEl.addClass("transport-field");
+			setting.settingEl.addClass("transport-field-url");
+			urlSetting = setting.settingEl;
+		}
+
+		switch (client.transport.type) {
+			case MCP_TRANSPORT_TYPE.STDIO:
+				commandSetting.style.display = "block";
+				argsSetting.style.display = "block";
+				urlSetting.style.display = "none";
+				break;
+
+			case MCP_TRANSPORT_TYPE.HTTP:
+			case MCP_TRANSPORT_TYPE.SSE:
+				commandSetting.style.display = "none";
+				argsSetting.style.display = "none";
+				urlSetting.style.display = "block";
+				break;
+		}
+	}
+
+	private addNewMCPClient(container: HTMLElement) {
+		const newClient: MCPClientConfig = {
+			id: `mcp-${Date.now()}`,
+			name: "",
+			enabled: true,
+			transport: {
+				type: MCP_TRANSPORT_TYPE.STDIO,
+				command: "",
+				args: "",
+				url: "",
+			},
+		};
+
+		this.plugin.settings.mcpClients.push(newClient);
+		this.saveSettingsAndRefresh();
+		this.renderMCPClients(container);
+	}
+
+	private async deleteMCPClient(index: number, container: HTMLElement) {
+		this.plugin.settings.mcpClients.splice(index, 1);
+		await this.saveSettingsAndRefresh();
+		this.renderMCPClients(container);
+	}
+
+	private async saveSettingsAndRefresh() {
+		await this.plugin.saveSettings();
+		if (this.plugin.mcpManager) {
+			await this.plugin.mcpManager.refreshClients();
+		}
 	}
 }
