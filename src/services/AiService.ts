@@ -4,6 +4,7 @@ import { generateText, streamText, type ModelMessage } from "ai";
 import { buildTools } from "../tools/AiTools";
 import { AiProviderFactory } from "./AiProviderFactory";
 import { AiProvider } from "../types/AiProvider";
+import { MCPSelection } from "../ui/MCPChooser";
 
 export type Mode = "compose" | "write" | "chat";
 
@@ -142,7 +143,8 @@ export class AiService {
 		onThoughts?: (thoughts: string) => void,
 		onPlaceholder?: (placeholder: string) => void,
 		provider?: AiProvider,
-		modelId?: string
+		modelId?: string,
+		mcpSelection?: MCPSelection
 	): Promise<ChatResult> {
 		const model = this.getModel(provider, modelId);
 		const temperature = this.plugin.settings.openaiTemperature ?? 0.2;
@@ -150,10 +152,15 @@ export class AiService {
 		const isOllama = provider === "ollama";
 		const tools =
 			mode === "compose" || mode === "write"
-				? buildTools(this.plugin)
+				? await this.buildCombinedTools(mcpSelection)
 				: undefined;
 
-		const systemPrompt = this.buildSystemPrompt(mode, isOllama, teamRoot);
+		const systemPrompt = await this.buildSystemPromptWithMCP(
+			mode,
+			isOllama,
+			teamRoot,
+			mcpSelection
+		);
 		const boundary: ModelMessage = { role: "system", content: systemPrompt };
 
 		const allToolResults: any[] = [];
@@ -179,7 +186,6 @@ export class AiService {
 				}
 
 				if (result.toolCalls?.length && onStatus) {
-					// Combine statuses for multiple tools in the step
 					const statuses = result.toolCalls
 						.map((tc) => {
 							const toolName = tc.toolName;
@@ -349,5 +355,83 @@ Tool outputs: ${toolContext}`;
 			creations: creations.length ? creations : undefined,
 			thoughts: thoughts ? thoughts : undefined,
 		};
+	}
+
+	/**
+	 * Build combined tools from team docs tools and selected MCP clients
+	 */
+	private async buildCombinedTools(mcpSelection?: MCPSelection): Promise<any> {
+		const baseTools = buildTools(this.plugin);
+
+		if (!mcpSelection?.clientIds?.length) {
+			return baseTools;
+		}
+
+		try {
+			const selectedClients = this.plugin.mcpManager
+				.getConnectedClients()
+				.filter((client) => mcpSelection.clientIds.includes(client.id));
+
+			for (const client of selectedClients) {
+				try {
+					const toolSet = await client.client.tools();
+					Object.assign(baseTools, toolSet);
+				} catch (error) {
+					console.error(`Failed to get tools from ${client.name}:`, error);
+				}
+			}
+
+			return baseTools;
+		} catch (error) {
+			console.error("Failed to build combined tools:", error);
+			return baseTools;
+		}
+	}
+
+	/**
+	 * Build system prompt with MCP capabilities
+	 */
+	private async buildSystemPromptWithMCP(
+		mode: Mode,
+		isOllama: boolean,
+		teamRoot: string,
+		mcpSelection?: MCPSelection
+	): Promise<string> {
+		let mcpToolsInfo = "";
+
+		if (mcpSelection?.clientIds?.length) {
+			try {
+				const mcpToolsData = await this.plugin.mcpManager.listAllTools();
+				const selectedMcpTools = mcpToolsData.filter((client) =>
+					mcpSelection.clientIds.includes(client.clientId)
+				);
+
+				if (selectedMcpTools.length > 0) {
+					const toolsList = selectedMcpTools
+						.flatMap((client) => {
+							const tools = Array.isArray(client.tools) ? client.tools : [];
+							return tools.map((tool) => {
+								const sanitizedClientName = client.clientName.replace(
+									/[^a-zA-Z0-9_]/g,
+									"_"
+								);
+								const sanitizedToolName = tool.name
+									.replace(/[^a-zA-Z0-9_.-]/g, "_")
+									.replace(/-/g, "_");
+								return `- ${sanitizedClientName}_${sanitizedToolName}: ${
+									tool.description || "No description"
+								}`;
+							});
+						})
+						.join("\n");
+
+					mcpToolsInfo = `\n\nADDITIONAL MCP TOOLS AVAILABLE:\n${toolsList}\n\nUse MCP tools when relevant to extend your capabilities beyond team docs.`;
+				}
+			} catch (error) {
+				console.error("Failed to get MCP tools info:", error);
+			}
+		}
+
+		return this.buildSystemPrompt(mode, isOllama, teamRoot) + mcpToolsInfo;
 	}
 }
