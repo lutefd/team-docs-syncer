@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { tool } from "ai";
 import type TeamDocsPlugin from "../../main";
-import { TFile } from "obsidian";
+import { TAbstractFile, TFile, TFolder } from "obsidian";
 
 const withRetry = async <T>(
 	operation: () => Promise<T>,
@@ -25,6 +25,21 @@ const withRetry = async <T>(
 	throw new Error("Retry logic failed unexpectedly");
 };
 
+const cleanAndResolvePath = (path: string, teamRoot: string): string => {
+	let cleanPath = path;
+	const wikiLinkMatch = path.match(/^\[\[([^\]]+)\]\]$/);
+	if (wikiLinkMatch) {
+		cleanPath = wikiLinkMatch[1];
+		if (!cleanPath.endsWith(".md")) {
+			cleanPath += ".md";
+		}
+		if (!cleanPath.startsWith(teamRoot + "/")) {
+			cleanPath = teamRoot + "/" + cleanPath;
+		}
+	}
+	return cleanPath;
+};
+
 export function buildTools(plugin: TeamDocsPlugin) {
 	const teamRoot = plugin.settings.teamDocsPath;
 	const isInsideTeam = (p: string) =>
@@ -37,8 +52,17 @@ export function buildTools(plugin: TeamDocsPlugin) {
 			inputSchema: z.object({
 				query: z.string(),
 				k: z.number().int().min(1).max(10).optional(),
+				snippetLength: z.number().int().min(100).max(2000).optional(),
 			}),
-			execute: async ({ query, k = 5 }: { query: string; k?: number }) => {
+			execute: async ({
+				query,
+				k = 5,
+				snippetLength = 1400,
+			}: {
+				query: string;
+				k?: number;
+				snippetLength?: number;
+			}) => {
 				return withRetry(async () => {
 					const hits = plugin.markdownIndexService?.search(query, k) || [];
 					const results: Array<{
@@ -53,7 +77,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 						if (file instanceof TFile) {
 							try {
 								const txt = await plugin.app.vault.read(file);
-								snippet = txt.slice(0, 1400);
+								snippet = txt.slice(0, snippetLength);
 							} catch {}
 						}
 						results.push({
@@ -74,27 +98,35 @@ export function buildTools(plugin: TeamDocsPlugin) {
 			inputSchema: z.object({ path: z.string() }),
 			execute: async ({ path }: { path: string }) => {
 				return withRetry(async () => {
-					let cleanPath = path;
-					const wikiLinkMatch = path.match(/^\[\[([^\]]+)\]\]$/);
-					if (wikiLinkMatch) {
-						cleanPath = wikiLinkMatch[1];
-						if (!cleanPath.endsWith(".md")) {
-							cleanPath += ".md";
-						}
-						if (!cleanPath.startsWith(teamRoot + "/")) {
-							cleanPath = teamRoot + "/" + cleanPath;
-						}
-					}
+					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
-					if (!isInsideTeam(cleanPath))
-						return { error: "outside-sync-folder" } as const;
+					if (!isInsideTeam(cleanPath)) {
+						return {
+							error: {
+								code: "outside-sync-folder",
+								message: `Path '${cleanPath}' is outside the team docs folder.`,
+							},
+						};
+					}
 					const file = plugin.app.vault.getAbstractFileByPath(cleanPath);
-					if (!(file instanceof TFile)) return { error: "not-found" } as const;
+					if (!(file instanceof TFile)) {
+						return {
+							error: {
+								code: "not-found",
+								message: `File not found: ${cleanPath}`,
+							},
+						};
+					}
 					try {
 						const content = await plugin.app.vault.read(file);
 						return { path: cleanPath, content };
-					} catch {
-						return { error: "read-failed" } as const;
+					} catch (e) {
+						return {
+							error: {
+								code: "read-failed",
+								message: `Failed to read file: ${e.message}`,
+							},
+						};
 					}
 				});
 			},
@@ -102,7 +134,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 		follow_links: tool({
 			description:
-				"Extract and follow internal document links from markdown content to gather comprehensive context. Use when you need to follow references to other documents.",
+				"Extract and follow internal document links from markdown content to gather comprehensive context. Use when you need to follow references to other documents. Supports recursion up to maxDepth.",
 			inputSchema: z.object({
 				content: z.string().describe("Markdown content to extract links from"),
 				currentPath: z.string().describe("Current document path for context"),
@@ -112,75 +144,99 @@ export function buildTools(plugin: TeamDocsPlugin) {
 					.min(1)
 					.max(10)
 					.optional()
-					.describe("Maximum depth to follow links (default 5)"),
+					.describe("Maximum recursion depth (default 1)"),
+				maxLinksPerLevel: z
+					.number()
+					.int()
+					.min(1)
+					.max(20)
+					.optional()
+					.describe("Max links to follow per level (default 5)"),
+				snippetLength: z
+					.number()
+					.int()
+					.min(100)
+					.max(2000)
+					.optional()
+					.describe("Snippet length for followed docs (default 800)"),
 			}),
 			execute: async ({
 				content,
 				currentPath,
-				maxDepth = 5,
+				maxDepth = 1,
+				maxLinksPerLevel = 5,
+				snippetLength = 800,
 			}: {
 				content: string;
 				currentPath: string;
 				maxDepth?: number;
+				maxLinksPerLevel?: number;
+				snippetLength?: number;
 			}) => {
-				const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
-				const links: string[] = [];
-				let match;
-
-				while ((match = linkRegex.exec(content)) !== null) {
-					let linkPath = match[1];
-
-					if (!linkPath.endsWith(".md")) {
-						linkPath += ".md";
-					}
-
-					if (!linkPath.startsWith(teamRoot + "/")) {
-						const currentDir = currentPath.substring(
-							0,
-							currentPath.lastIndexOf("/")
-						);
-						const resolvedPath = currentDir + "/" + linkPath;
-
-						if (isInsideTeam(resolvedPath)) {
-							linkPath = resolvedPath;
-						} else if (isInsideTeam(teamRoot + "/" + linkPath)) {
-							linkPath = teamRoot + "/" + linkPath;
-						}
-					}
-
-					if (
-						isInsideTeam(linkPath) &&
-						linkPath !== currentPath &&
-						!links.includes(linkPath)
-					) {
-						links.push(linkPath);
-					}
-				}
-
-				const limitedLinks = links.slice(0, Math.min(5, maxDepth));
-				const linkedDocs: Array<{
+				const followedDocs: Array<{
 					path: string;
 					title?: string;
 					snippet: string;
+					depth: number;
 				}> = [];
+				const visited = new Set<string>();
 
-				for (const linkPath of limitedLinks) {
-					const file = plugin.app.vault.getAbstractFileByPath(linkPath);
-					if (file instanceof TFile) {
-						try {
-							const linkedContent = await plugin.app.vault.read(file);
-							const title = file.basename;
-							const snippet = linkedContent.slice(0, 800);
-							linkedDocs.push({ path: linkPath, title, snippet });
-						} catch {}
+				const extractAndFollow = async (
+					mdContent: string,
+					path: string,
+					depth: number
+				) => {
+					if (depth > maxDepth || visited.has(path)) return;
+					visited.add(path);
+
+					const linkRegex = /\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g;
+					const links: string[] = [];
+					let match;
+
+					while ((match = linkRegex.exec(mdContent)) !== null) {
+						let linkPath = match[1];
+						if (!linkPath.endsWith(".md")) linkPath += ".md";
+
+						if (!linkPath.startsWith(teamRoot + "/")) {
+							const currentDir = path.substring(0, path.lastIndexOf("/"));
+							const resolvedPath = currentDir + "/" + linkPath;
+							linkPath = isInsideTeam(resolvedPath)
+								? resolvedPath
+								: teamRoot + "/" + linkPath;
+						}
+
+						if (
+							isInsideTeam(linkPath) &&
+							linkPath !== path &&
+							!visited.has(linkPath) &&
+							!links.includes(linkPath)
+						) {
+							links.push(linkPath);
+						}
 					}
-				}
+
+					const limitedLinks = links.slice(0, maxLinksPerLevel);
+					for (const linkPath of limitedLinks) {
+						const file = plugin.app.vault.getAbstractFileByPath(linkPath);
+						if (file instanceof TFile) {
+							try {
+								const linkedContent = await plugin.app.vault.read(file);
+								const title = file.basename;
+								const snippet = linkedContent.slice(0, snippetLength);
+								followedDocs.push({ path: linkPath, title, snippet, depth });
+
+								await extractAndFollow(linkedContent, linkPath, depth + 1);
+							} catch {}
+						}
+					}
+				};
+
+				await extractAndFollow(content, currentPath, 1);
 
 				return {
 					currentPath,
-					extractedLinks: links,
-					followedDocs: linkedDocs,
-					hasMoreLinks: links.length > limitedLinks.length,
+					followedDocs,
+					hasMore: visited.size < followedDocs.length,
 				};
 			},
 		}),
@@ -216,51 +272,43 @@ export function buildTools(plugin: TeamDocsPlugin) {
 						instructions,
 					});
 
-					try {
-						let cleanPath = path;
-						const wikiLinkMatch = path.match(/^\[\[([^\]]+)\]\]$/);
-						if (wikiLinkMatch) {
-							cleanPath = wikiLinkMatch[1];
-							if (!cleanPath.endsWith(".md")) {
-								cleanPath += ".md";
-							}
-							if (!cleanPath.startsWith(teamRoot + "/")) {
-								cleanPath = teamRoot + "/" + cleanPath;
-							}
-						}
+					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
-						if (!isInsideTeam(cleanPath)) {
-							console.log(
-								"[propose_edit] Path outside team folder:",
-								cleanPath
-							);
-							return { error: "outside-sync-folder" } as const;
-						}
-
-						if (!content || content.trim().length === 0) {
-							console.log("[propose_edit] No content provided");
-							return { error: "no-content-provided" } as const;
-						}
-
-						const result = {
-							ok: true,
-							path: cleanPath,
-							content,
-							instructions: instructions || "",
-						} as const;
-
-						console.log("[propose_edit] Returning result:", {
-							ok: result.ok,
-							path: result.path,
-							contentLength: result.content.length,
-							instructions: result.instructions,
-						});
-
-						return result;
-					} catch (error) {
-						console.error("[propose_edit] Error:", error);
-						return { error: "execution-failed" } as const;
+					if (!isInsideTeam(cleanPath)) {
+						console.log("[propose_edit] Path outside team folder:", cleanPath);
+						return {
+							error: {
+								code: "outside-sync-folder",
+								message: `Path '${cleanPath}' is outside the team docs folder.`,
+							},
+						};
 					}
+
+					if (!content || content.trim().length === 0) {
+						console.log("[propose_edit] No content provided");
+						return {
+							error: {
+								code: "no-content-provided",
+								message: "Content must be provided for edits.",
+							},
+						};
+					}
+
+					const result = {
+						ok: true,
+						path: cleanPath,
+						content,
+						instructions: instructions || "",
+					};
+
+					console.log("[propose_edit] Returning result:", {
+						ok: result.ok,
+						path: result.path,
+						contentLength: result.content.length,
+						instructions: result.instructions,
+					});
+
+					return result;
 				});
 			},
 		}),
@@ -292,36 +340,371 @@ export function buildTools(plugin: TeamDocsPlugin) {
 				instructions?: string;
 			}) => {
 				return withRetry(async () => {
-					let cleanPath = path;
-					const wikiLinkMatch = path.match(/^\[\[([^\]]+)\]\]$/);
-					if (wikiLinkMatch) {
-						cleanPath = wikiLinkMatch[1];
-						if (!cleanPath.endsWith(".md")) {
-							cleanPath += ".md";
-						}
-						if (!cleanPath.startsWith(teamRoot + "/")) {
-							cleanPath = teamRoot + "/" + cleanPath;
-						}
-					}
+					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
-					if (!isInsideTeam(cleanPath))
-						return { error: "outside-sync-folder" } as const;
+					if (!isInsideTeam(cleanPath)) {
+						return {
+							error: {
+								code: "outside-sync-folder",
+								message: `Path '${cleanPath}' is outside the team docs folder.`,
+							},
+						};
+					}
 					const existing = plugin.app.vault.getAbstractFileByPath(cleanPath);
-					if (existing)
-						return { error: "already-exists", path: cleanPath } as const;
+					if (existing) {
+						return {
+							error: {
+								code: "already-exists",
+								message: `File already exists: ${cleanPath}`,
+							},
+						};
+					}
 
 					const folderPath = cleanPath.split("/").slice(0, -1).join("/");
 					try {
 						await plugin.app.vault.createFolder(folderPath);
 					} catch {}
 
-					const file = await plugin.app.vault.create(cleanPath, content);
+					try {
+						const file = await plugin.app.vault.create(cleanPath, content);
+						return {
+							ok: true,
+							path: file.path,
+							content,
+							instructions: instructions || "",
+						};
+					} catch (e) {
+						return {
+							error: {
+								code: "create-failed",
+								message: `Failed to create file: ${e.message}`,
+							},
+						};
+					}
+				});
+			},
+		}),
+
+		list_docs: tool({
+			description:
+				"List files and folders within a given path in the team docs folder. Use to browse the structure before searching or reading.",
+			inputSchema: z.object({
+				path: z
+					.string()
+					.optional()
+					.describe("Folder path to list (default: team root)"),
+				recursive: z
+					.boolean()
+					.optional()
+					.describe("Recursively list subfolders (default: false)"),
+				maxDepth: z
+					.number()
+					.int()
+					.min(1)
+					.max(10)
+					.optional()
+					.describe("Max recursion depth if recursive (default: 3)"),
+				filterExtension: z
+					.string()
+					.optional()
+					.describe("Filter by file extension (e.g., '.md')"),
+			}),
+			execute: async ({
+				path,
+				recursive = false,
+				maxDepth = 3,
+				filterExtension,
+			}: {
+				path?: string;
+				recursive?: boolean;
+				maxDepth?: number;
+				filterExtension?: string;
+			}) => {
+				return withRetry(async () => {
+					const cleanPath = path
+						? cleanAndResolvePath(path, teamRoot)
+						: teamRoot;
+					if (!isInsideTeam(cleanPath)) {
+						return {
+							error: {
+								code: "outside-sync-folder",
+								message: `Path '${cleanPath}' is outside the team docs folder.`,
+							},
+						};
+					}
+
+					const results: Array<{
+						path: string;
+						type: "file" | "folder";
+						size?: number;
+						modified?: string;
+					}> = [];
+
+					const listRecursive = (folder: TFolder, currentDepth: number) => {
+						if (currentDepth > maxDepth) return;
+						for (const child of folder.children) {
+							if (child instanceof TFile) {
+								if (!filterExtension || child.path.endsWith(filterExtension)) {
+									results.push({
+										path: child.path,
+										type: "file",
+										size: child.stat.size,
+										modified: new Date(child.stat.mtime).toISOString(),
+									});
+								}
+							} else if (child instanceof TFolder) {
+								results.push({
+									path: child.path,
+									type: "folder",
+								});
+								if (recursive) {
+									listRecursive(child, currentDepth + 1);
+								}
+							}
+						}
+					};
+
+					const rootFolder = plugin.app.vault.getAbstractFileByPath(cleanPath);
+					if (!(rootFolder instanceof TFolder)) {
+						return {
+							error: {
+								code: "not-folder",
+								message: `Path '${cleanPath}' is not a folder.`,
+							},
+						};
+					}
+
+					listRecursive(rootFolder, 1);
+					return { path: cleanPath, items: results };
+				});
+			},
+		}),
+
+		search_tags: tool({
+			description:
+				"Search for markdown documents containing a specific tag (e.g., '#project') or frontmatter key. Returns brief snippets. Use to find tagged content.",
+			inputSchema: z.object({
+				tag: z
+					.string()
+					.describe(
+						"Tag to search for (e.g., '#project' or frontmatter key like 'status: active')"
+					),
+				k: z.number().int().min(1).max(20).optional(),
+				snippetLength: z.number().int().min(100).max(2000).optional(),
+			}),
+			execute: async ({
+				tag,
+				k = 5,
+				snippetLength = 800,
+			}: {
+				tag: string;
+				k?: number;
+				snippetLength?: number;
+			}) => {
+				return withRetry(async () => {
+					const results: Array<{
+						path: string;
+						title: string;
+						snippet?: string;
+					}> = [];
+					const cache = plugin.app.metadataCache;
+					const allFiles = plugin.app.vault.getMarkdownFiles();
+
+					let count = 0;
+					for (const file of allFiles) {
+						if (!isInsideTeam(file.path)) continue;
+
+						const meta = cache.getFileCache(file);
+						const hasTag =
+							(meta?.tags?.some((t) => t.tag === tag) ||
+								Object.keys(meta?.frontmatter || {}).some((key) =>
+									`${key}: ${meta?.frontmatter?.[key]}`.includes(tag)
+								)) ??
+							false;
+
+						if (hasTag) {
+							let snippet: string | undefined;
+							try {
+								const content = await plugin.app.vault.read(file);
+								snippet = content.slice(0, snippetLength);
+							} catch {}
+							results.push({
+								path: file.path,
+								title: file.basename,
+								snippet,
+							});
+							count++;
+							if (count >= k) break;
+						}
+					}
+
+					if (results.length === 0) {
+						return {
+							error: {
+								code: "no-results",
+								message: `No documents found with tag '${tag}'.`,
+							},
+						};
+					}
+					return results;
+				});
+			},
+		}),
+
+		get_backlinks: tool({
+			description:
+				"Get documents that link back to the given path, with brief snippets. Use to understand references and context.",
+			inputSchema: z.object({
+				path: z.string().describe("Path to get backlinks for"),
+				k: z.number().int().min(1).max(20).optional(),
+				snippetLength: z.number().int().min(100).max(2000).optional(),
+			}),
+			execute: async ({
+				path,
+				k = 5,
+				snippetLength = 800,
+			}: {
+				path: string;
+				k?: number;
+				snippetLength?: number;
+			}) => {
+				return withRetry(async () => {
+					const cleanPath = cleanAndResolvePath(path, teamRoot);
+					if (!isInsideTeam(cleanPath)) {
+						return {
+							error: {
+								code: "outside-sync-folder",
+								message: `Path '${cleanPath}' is outside the team docs folder.`,
+							},
+						};
+					}
+
+					const cache = plugin.app.metadataCache;
+					const backlinks: Array<{
+						path: string;
+						title: string;
+						snippet?: string;
+					}> = [];
+					const resolvedLinks = cache.resolvedLinks || {};
+
+					let count = 0;
+					for (const [linkingPath, links] of Object.entries(resolvedLinks)) {
+						if (links[cleanPath] && isInsideTeam(linkingPath)) {
+							const file = plugin.app.vault.getAbstractFileByPath(linkingPath);
+							if (file instanceof TFile) {
+								let snippet: string | undefined;
+								try {
+									const content = await plugin.app.vault.read(file);
+									snippet = content.slice(0, snippetLength);
+								} catch {}
+								backlinks.push({
+									path: linkingPath,
+									title: file.basename,
+									snippet,
+								});
+								count++;
+								if (count >= k) break;
+							}
+						}
+					}
+
+					if (backlinks.length === 0) {
+						return {
+							error: {
+								code: "no-backlinks",
+								message: `No backlinks found for '${cleanPath}'.`,
+							},
+						};
+					}
+					return { path: cleanPath, backlinks };
+				});
+			},
+		}),
+
+		get_graph_context: tool({
+			description:
+				"Get a simple graph of linked documents starting from the given path, up to a maximum depth. Use to visualize connections.",
+			inputSchema: z.object({
+				path: z.string().describe("Starting document path"),
+				maxDepth: z
+					.number()
+					.int()
+					.min(1)
+					.max(10)
+					.optional()
+					.describe("Maximum depth to expand (default: 1)"),
+				maxNodes: z
+					.number()
+					.int()
+					.min(1)
+					.max(100)
+					.optional()
+					.describe("Maximum nodes to include (default: 20)"),
+			}),
+			execute: async ({
+				path,
+				maxDepth = 1,
+				maxNodes = 20,
+			}: {
+				path: string;
+				maxDepth?: number;
+				maxNodes?: number;
+			}) => {
+				return withRetry(async () => {
+					const cleanPath = cleanAndResolvePath(path, teamRoot);
+					if (!isInsideTeam(cleanPath)) {
+						return {
+							error: {
+								code: "outside-sync-folder",
+								message: `Path '${cleanPath}' is outside the team docs folder.`,
+							},
+						};
+					}
+
+					const cache = plugin.app.metadataCache;
+					const resolvedLinks = cache.resolvedLinks || {};
+
+					const nodes = new Map<string, { id: string; title: string }>();
+					const edges: Array<{ from: string; to: string }> = [];
+					const visited = new Set<string>();
+					const queue: Array<{ path: string; depth: number }> = [
+						{ path: cleanPath, depth: 0 },
+					];
+
+					while (queue.length > 0 && nodes.size < maxNodes) {
+						const { path: current, depth } = queue.shift()!;
+						if (depth > maxDepth || visited.has(current)) continue;
+						visited.add(current);
+
+						const file = plugin.app.vault.getAbstractFileByPath(current);
+						if (file instanceof TFile) {
+							nodes.set(current, { id: current, title: file.basename });
+						}
+
+						const outgoing = resolvedLinks[current] || {};
+						for (const [to, _] of Object.entries(outgoing)) {
+							if (isInsideTeam(to) && !visited.has(to)) {
+								edges.push({ from: current, to });
+								queue.push({ path: to, depth: depth + 1 });
+							}
+						}
+					}
+
+					if (nodes.size === 0) {
+						return {
+							error: {
+								code: "no-graph",
+								message: `No graph context found for '${cleanPath}'.`,
+							},
+						};
+					}
+
 					return {
-						ok: true,
-						path: file.path,
-						content,
-						instructions: instructions || "",
-					} as const;
+						startingPath: cleanPath,
+						nodes: Array.from(nodes.values()),
+						edges,
+						hasMore: queue.length > 0,
+					};
 				});
 			},
 		}),
