@@ -367,12 +367,14 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 						this.plugin.settings.mcpClients[index].transport.command = "";
 						this.plugin.settings.mcpClients[index].transport.args = "";
 						this.plugin.settings.mcpClients[index].transport.url = "";
-						await this.saveSettingsAndRefresh();
+
 						this.renderTransportFields(
 							clientContainer,
 							this.plugin.settings.mcpClients[index],
 							index
 						);
+
+						await this.saveSettingsAndRefresh();
 					});
 			});
 
@@ -384,82 +386,59 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 		client: MCPClientConfig,
 		index: number
 	) {
-		let commandSetting = container.querySelector(
-			".transport-field-command"
-		) as HTMLElement;
-		let argsSetting = container.querySelector(
-			".transport-field-args"
-		) as HTMLElement;
-		let urlSetting = container.querySelector(
-			".transport-field-url"
-		) as HTMLElement;
-
-		if (!commandSetting) {
-			const setting = new Setting(container)
-				.setName("Command")
-				.setDesc("Executable command to run the MCP server")
-				.addText((text) =>
-					text
-						.setPlaceholder("node")
-						.setValue(client.transport.command || "")
-						.onChange(async (value) => {
-							this.plugin.settings.mcpClients[index].transport.command = value;
-							await this.saveSettingsAndRefresh();
-						})
-				);
-			setting.settingEl.addClass("transport-field");
-			setting.settingEl.addClass("transport-field-command");
-			commandSetting = setting.settingEl;
-		}
-
-		if (!argsSetting) {
-			const setting = new Setting(container)
-				.setName("Arguments")
-				.setDesc("Command line arguments (space-separated)")
-				.addText((text) =>
-					text
-						.setPlaceholder("/path/to/mcp/server.js")
-						.setValue(client.transport.args || "")
-						.onChange(async (value) => {
-							this.plugin.settings.mcpClients[index].transport.args = value;
-							await this.saveSettingsAndRefresh();
-						})
-				);
-			setting.settingEl.addClass("transport-field");
-			setting.settingEl.addClass("transport-field-args");
-			argsSetting = setting.settingEl;
-		}
-
-		if (!urlSetting) {
-			const setting = new Setting(container)
-				.setName("Server URL")
-				.setDesc("URL of the MCP server")
-				.addText((text) =>
-					text
-						.setPlaceholder("http://localhost:8080/mcp")
-						.setValue(client.transport.url || "")
-						.onChange(async (value) => {
-							this.plugin.settings.mcpClients[index].transport.url = value;
-							await this.saveSettingsAndRefresh();
-						})
-				);
-			setting.settingEl.addClass("transport-field");
-			setting.settingEl.addClass("transport-field-url");
-			urlSetting = setting.settingEl;
-		}
+		const existingFields = container.querySelectorAll(".transport-field");
+		existingFields.forEach((field) => field.remove());
 
 		switch (client.transport.type) {
 			case MCP_TRANSPORT_TYPE.STDIO:
-				commandSetting.style.display = "block";
-				argsSetting.style.display = "block";
-				urlSetting.style.display = "none";
+				const commandSetting = new Setting(container)
+					.setName("Command")
+					.setDesc("Executable command to run the MCP server")
+					.addText((text) =>
+						text
+							.setPlaceholder("node")
+							.setValue(client.transport.command || "")
+							.onChange(async (value) => {
+								this.plugin.settings.mcpClients[index].transport.command =
+									value;
+								await this.plugin.saveSettings(); // Only save settings, don't refresh
+							})
+					);
+				commandSetting.settingEl.addClass("transport-field");
+				commandSetting.settingEl.addClass("transport-field-command");
+
+				const argsSetting = new Setting(container)
+					.setName("Arguments")
+					.setDesc("Command line arguments (space-separated)")
+					.addText((text) =>
+						text
+							.setPlaceholder("/path/to/mcp/server.js")
+							.setValue(client.transport.args || "")
+							.onChange(async (value) => {
+								this.plugin.settings.mcpClients[index].transport.args = value;
+								await this.plugin.saveSettings(); // Only save settings, don't refresh
+							})
+					);
+				argsSetting.settingEl.addClass("transport-field");
+				argsSetting.settingEl.addClass("transport-field-args");
 				break;
 
 			case MCP_TRANSPORT_TYPE.HTTP:
 			case MCP_TRANSPORT_TYPE.SSE:
-				commandSetting.style.display = "none";
-				argsSetting.style.display = "none";
-				urlSetting.style.display = "block";
+				const urlSetting = new Setting(container)
+					.setName("Server URL")
+					.setDesc("URL of the MCP server")
+					.addText((text) =>
+						text
+							.setPlaceholder("http://localhost:8080/mcp")
+							.setValue(client.transport.url || "")
+							.onChange(async (value) => {
+								this.plugin.settings.mcpClients[index].transport.url = value;
+								await this.plugin.saveSettings(); // Only save settings, don't refresh
+							})
+					);
+				urlSetting.settingEl.addClass("transport-field");
+				urlSetting.settingEl.addClass("transport-field-url");
 				break;
 		}
 	}
