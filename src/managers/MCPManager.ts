@@ -1,5 +1,4 @@
 import { experimental_createMCPClient } from "ai";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -31,8 +30,13 @@ export class MCPManager {
 	private plugin: TeamDocsPlugin;
 	private clients: Map<string, MCPClientInstance> = new Map();
 	private connectionAttempts: Map<string, number> = new Map();
+	private toolsCache: Map<string, { tools: any[]; timestamp: number }> =
+		new Map();
 	private readonly maxRetries = 3;
 	private readonly retryDelay = 1000;
+	private readonly cacheTimeout = 30000;
+	private reconnectionTimers: Map<string, NodeJS.Timeout> = new Map();
+	private readonly reconnectionDelay = 5000;
 
 	constructor(plugin: TeamDocsPlugin) {
 		this.plugin = plugin;
@@ -42,13 +46,17 @@ export class MCPManager {
 	 * Initialize all configured MCP clients
 	 */
 	async initialize(): Promise<void> {
-		const configs = this.plugin.settings.mcpClients.filter(
-			(config) => config.enabled
-		);
+		const configs = this.plugin.settings.mcpClients;
 
 		for (const config of configs) {
 			try {
-				await this.connectClient(config);
+				if (config.enabled) {
+					await this.connectClient(config);
+				} else {
+					if (config.transport.type !== MCP_TRANSPORT_TYPE.STDIO) {
+						await this.testConnection(config);
+					}
+				}
 			} catch (error) {
 				console.error(`Failed to initialize MCP client ${config.name}:`, error);
 			}
@@ -80,7 +88,6 @@ export class MCPManager {
 								fs.existsSync(nodePath) &&
 								fs.statSync(nodePath).mode & parseInt("111", 8)
 							) {
-								console.log(`[MCPManager] Found fnm node at: ${nodePath}`);
 								return nodePath;
 							}
 						}
@@ -95,7 +102,6 @@ export class MCPManager {
 					fs.existsSync(nvmPath) &&
 					fs.statSync(nvmPath).mode & parseInt("111", 8)
 				) {
-					console.log(`[MCPManager] Found nvm node at: ${nvmPath}`);
 					return nvmPath;
 				}
 			} catch (e) {}
@@ -106,7 +112,6 @@ export class MCPManager {
 			const resolvedPath = stdout.trim();
 
 			if (resolvedPath && resolvedPath !== command) {
-				console.log(`[MCPManager] Resolved '${command}' to: ${resolvedPath}`);
 				return resolvedPath;
 			}
 		} catch (e) {}
@@ -141,21 +146,17 @@ export class MCPManager {
 						fs.existsSync(path) &&
 						fs.statSync(path).mode & parseInt("111", 8)
 					) {
-						console.log(`[MCPManager] Resolved '${command}' to: ${path}`);
 						return path;
 					}
 				} catch (e) {}
 			}
-			console.warn(
-				`[MCPManager] Could not find '${command}' in common paths, using original command`
-			);
 		}
 
 		return command;
 	}
 
 	/**
-	 * Create transport based on configuration
+	 * Create transport based on configuration with enhanced filtering
 	 */
 	private async createTransport(config: MCPClientConfig): Promise<Transport> {
 		switch (config.transport.type) {
@@ -170,12 +171,7 @@ export class MCPManager {
 					config.transport.command
 				);
 
-				return new StdioClientTransport({
-					command: resolvedCommand,
-					args: config.transport.args
-						? config.transport.args.split(" ")
-						: undefined,
-				});
+				return this.createRobustStdioTransport(config, resolvedCommand);
 
 			case MCP_TRANSPORT_TYPE.SSE:
 				if (!config.transport.url) {
@@ -199,15 +195,324 @@ export class MCPManager {
 	}
 
 	/**
+	 * Create a robust STDIO transport that handles MCP servers with debug output
+	 */
+	private createRobustStdioTransport(
+		config: MCPClientConfig,
+		command: string
+	): Transport {
+		const { spawn } = require("child_process");
+
+		const args = config.transport.args ? config.transport.args.split(" ") : [];
+		const child = spawn(command, args, {
+			stdio: ["pipe", "pipe", "pipe"],
+			env: {
+				...process.env,
+				NODE_ENV: "production",
+				DEBUG: "",
+				VERBOSE: "",
+			},
+		});
+
+		child.stderr.on("data", (data: Buffer) => {
+			console.debug(`MCP ${config.name} stderr:`, data.toString());
+		});
+
+		let messageBuffer = "";
+		const messageQueue: string[] = [];
+		let onMessageCallback: ((data: any) => void) | null = null;
+
+		child.stdout.on("data", (data: Buffer) => {
+			const chunk = data.toString();
+			messageBuffer += chunk;
+
+			this.extractJsonRpcMessages(messageBuffer, messageQueue);
+
+			messageBuffer = this.cleanBuffer(messageBuffer);
+
+			while (messageQueue.length > 0 && onMessageCallback) {
+				const message = messageQueue.shift()!;
+				try {
+					const parsedMessage = JSON.parse(message);
+					onMessageCallback(parsedMessage);
+				} catch (error) {
+					console.error(`Error processing MCP message:`, error);
+				}
+			}
+		});
+
+		const transport: Transport = {
+			onmessage: undefined,
+			onerror: undefined,
+			onclose: undefined,
+
+			start: async () => {},
+
+			send: async (message: any) => {
+				const jsonMessage = JSON.stringify(message) + "\n";
+				child.stdin.write(jsonMessage);
+			},
+
+			close: async () => {
+				child.kill();
+			},
+		};
+
+		Object.defineProperty(transport, "onmessage", {
+			set: (callback: (data: any) => void) => {
+				onMessageCallback = callback;
+				while (messageQueue.length > 0 && callback) {
+					const message = messageQueue.shift()!;
+					try {
+						const parsedMessage = JSON.parse(message);
+						callback(parsedMessage);
+					} catch (error) {
+						console.error(`Error processing queued MCP message:`, error);
+					}
+				}
+			},
+			get: () => onMessageCallback,
+		});
+
+		child.on("error", (error: Error) => {
+			if (transport.onerror) {
+				transport.onerror(error);
+			}
+		});
+
+		child.on("close", (code: number) => {
+			if (transport.onclose) {
+				transport.onclose();
+			}
+		});
+
+		return transport;
+	}
+
+	/**
+	 * Extract valid JSON-RPC messages from a buffer containing mixed output
+	 */
+	private extractJsonRpcMessages(buffer: string, messageQueue: string[]): void {
+		const lines = buffer.split("\n");
+
+		for (const line of lines) {
+			const trimmed = line.trim();
+			if (!trimmed) continue;
+
+			if (this.isDebugLine(trimmed)) {
+				continue;
+			}
+
+			if (!trimmed.startsWith("{")) {
+				continue;
+			}
+
+			try {
+				const parsed = JSON.parse(trimmed);
+
+				if (this.isValidJsonRpc(parsed)) {
+					messageQueue.push(trimmed);
+				}
+			} catch (error) {
+				continue;
+			}
+		}
+	}
+
+	/**
+	 * Clean buffer by removing processed lines
+	 */
+	private cleanBuffer(buffer: string): string {
+		const lines = buffer.split("\n");
+		return lines[lines.length - 1] || "";
+	}
+
+	/**
+	 * Check if a line looks like debug output
+	 */
+	private isDebugLine(line: string): boolean {
+		const debugPatterns = [
+			/^(DEBUG|INFO|WARN|ERROR|TRACE):/i,
+			/^console\./i,
+			/^Loading/i,
+			/^Initializing/i,
+			/^Starting/i,
+			/^Found/i,
+			/^Processing/i,
+			/^\[.*\]/,
+			/^\d{4}-\d{2}-\d{2}/,
+			/^[A-Za-z]+\s+\d+/,
+		];
+
+		return debugPatterns.some((pattern) => pattern.test(line));
+	}
+
+	/**
+	 * Validate if an object is a valid JSON-RPC message
+	 */
+	private isValidJsonRpc(obj: any): boolean {
+		if (typeof obj !== "object" || obj === null) {
+			return false;
+		}
+
+		if (obj.jsonrpc === "2.0") {
+			return true;
+		}
+
+		return (
+			typeof obj.id !== "undefined" ||
+			typeof obj.method === "string" ||
+			typeof obj.result !== "undefined" ||
+			typeof obj.error !== "undefined"
+		);
+	}
+
+	/**
+	 * Check if an error should trigger automatic reconnection
+	 */
+	private shouldReconnect(error: Error): boolean {
+		const message = error.message.toLowerCase();
+		return (
+			message.includes("sse stream disconnected") ||
+			message.includes("network error") ||
+			message.includes("err_network_changed") ||
+			message.includes("connection lost") ||
+			message.includes("aborted")
+		);
+	}
+
+	/**
+	 * Schedule automatic reconnection for a client
+	 */
+	private scheduleReconnection(config: MCPClientConfig): void {
+		const existingTimer = this.reconnectionTimers.get(config.id);
+		if (existingTimer) {
+			clearTimeout(existingTimer);
+		}
+
+		const timer = setTimeout(async () => {
+			try {
+				await this.connectClient(config);
+			} catch (error) {
+				console.error(`Reconnection failed for ${config.name}:`, error);
+			}
+			this.reconnectionTimers.delete(config.id);
+		}, this.reconnectionDelay);
+
+		this.reconnectionTimers.set(config.id, timer);
+	}
+
+	/**
+	 * Test connection to an MCP client without keeping it connected
+	 */
+	async testConnection(config: MCPClientConfig): Promise<boolean> {
+		try {
+			const transport = await this.createTransport(config);
+			const client = await experimental_createMCPClient({ transport });
+
+			await client.tools();
+
+			await transport.close();
+
+			return true;
+		} catch (error) {
+			console.error(`Connection test failed for ${config.name}:`, error);
+			return false;
+		}
+	}
+
+	/**
 	 * Connect to an MCP client
 	 */
 	async connectClient(config: MCPClientConfig): Promise<void> {
+		const existing = this.clients.get(config.id);
+		if (existing && existing.connected) {
+			return;
+		}
+
 		if (this.clients.has(config.id)) {
 			await this.disconnectClient(config.id);
 		}
 
 		try {
 			const transport = await this.createTransport(config);
+
+			const originalOnMessage = transport.onmessage;
+			let messageBuffer = "";
+
+			transport.onmessage = (data: any) => {
+				if (typeof data === "string") {
+					messageBuffer += data;
+
+					let processedUpTo = 0;
+
+					for (let i = 0; i < messageBuffer.length; i++) {
+						const char = messageBuffer[i];
+
+						if (char === "{") {
+							let braceCount = 1;
+							let jsonStart = i;
+							let j = i + 1;
+							let inString = false;
+							let escaped = false;
+
+							while (j < messageBuffer.length && braceCount > 0) {
+								const currentChar = messageBuffer[j];
+
+								if (escaped) {
+									escaped = false;
+								} else if (currentChar === "\\") {
+									escaped = true;
+								} else if (currentChar === '"' && !escaped) {
+									inString = !inString;
+								} else if (!inString) {
+									if (currentChar === "{") {
+										braceCount++;
+									} else if (currentChar === "}") {
+										braceCount--;
+									}
+								}
+								j++;
+							}
+
+							if (braceCount === 0) {
+								const potentialJson = messageBuffer.substring(jsonStart, j);
+
+								try {
+									const parsed = JSON.parse(potentialJson);
+
+									if (
+										parsed.jsonrpc === "2.0" ||
+										typeof parsed.id !== "undefined" ||
+										parsed.method ||
+										parsed.result !== undefined ||
+										parsed.error !== undefined
+									) {
+										if (originalOnMessage) {
+											originalOnMessage.call(transport, potentialJson);
+										}
+									}
+								} catch (parseError) {}
+
+								processedUpTo = j;
+								i = j - 1;
+							}
+						}
+					}
+
+					if (processedUpTo > 0) {
+						messageBuffer = messageBuffer.substring(processedUpTo);
+					}
+
+					if (messageBuffer.length > 50000) {
+						messageBuffer = "";
+					}
+				} else {
+					if (originalOnMessage) {
+						originalOnMessage.call(transport, data);
+					}
+				}
+			};
 
 			const client = await experimental_createMCPClient({ transport });
 
@@ -221,26 +526,25 @@ export class MCPManager {
 			};
 
 			transport.onclose = () => {
-				console.log(`MCP client ${config.name} disconnected`);
 				instance.connected = false;
+
+				if (config.enabled) {
+					this.scheduleReconnection(config);
+				}
 			};
 
 			transport.onerror = (error: Error) => {
 				console.error(`MCP client ${config.name} error:`, error);
 				instance.lastError = error.message;
 				instance.connected = false;
+
+				if (config.enabled && this.shouldReconnect(error)) {
+					this.scheduleReconnection(config);
+				}
 			};
 
 			this.clients.set(config.id, instance);
 			this.connectionAttempts.delete(config.id);
-			console.log(`MCP client ${config.name} connected successfully`);
-
-			try {
-				const toolSet = await client.tools();
-				console.log(`MCP client ${config.name} tools:`, toolSet);
-			} catch (toolError) {
-				console.warn(`Could not list tools for ${config.name}:`, toolError);
-			}
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
@@ -259,6 +563,12 @@ export class MCPManager {
 		const instance = this.clients.get(clientId);
 		if (!instance) return;
 
+		const timer = this.reconnectionTimers.get(clientId);
+		if (timer) {
+			clearTimeout(timer);
+			this.reconnectionTimers.delete(clientId);
+		}
+
 		try {
 			await instance.transport.close();
 		} catch (error) {
@@ -270,6 +580,7 @@ export class MCPManager {
 
 		this.clients.delete(clientId);
 		this.connectionAttempts.delete(clientId);
+		this.toolsCache.delete(clientId);
 	}
 
 	/**
@@ -285,11 +596,6 @@ export class MCPManager {
 		const attempts = this.connectionAttempts.get(clientId) || 0;
 		if (attempts < this.maxRetries) {
 			this.connectionAttempts.set(clientId, attempts + 1);
-			console.log(
-				`Retrying connection for ${instance.name} (attempt ${attempts + 1}/${
-					this.maxRetries
-				})`
-			);
 
 			setTimeout(async () => {
 				try {
@@ -389,7 +695,7 @@ export class MCPManager {
 	}
 
 	/**
-	 * List available tools from all connected clients
+	 * List available tools from all connected clients with caching
 	 */
 	async listAllTools(): Promise<
 		Array<{
@@ -405,10 +711,20 @@ export class MCPManager {
 		}> = [];
 
 		for (const client of this.getConnectedClients()) {
+			const now = Date.now();
+			const cached = this.toolsCache.get(client.id);
+
+			if (cached && now - cached.timestamp < this.cacheTimeout) {
+				results.push({
+					clientId: client.id,
+					clientName: client.name,
+					tools: cached.tools,
+				});
+				continue;
+			}
+
 			try {
 				const toolSet = await client.client.tools();
-				console.log(`MCP tools response for ${client.name}:`, toolSet);
-
 				const tools: any[] = [];
 				if (toolSet && typeof toolSet === "object") {
 					for (const [toolName, toolDef] of Object.entries(toolSet)) {
@@ -425,6 +741,8 @@ export class MCPManager {
 						});
 					}
 				}
+
+				this.toolsCache.set(client.id, { tools, timestamp: now });
 
 				results.push({
 					clientId: client.id,
@@ -479,6 +797,29 @@ export class MCPManager {
 				arguments: args,
 			});
 		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+
+			if (
+				errorMessage.includes("JSON") &&
+				errorMessage.includes("position") &&
+				typeof args === "string"
+			) {
+				try {
+					const parsedArgs = JSON.parse(args);
+					return await client.client.callTool({
+						name: toolName,
+						arguments: parsedArgs,
+					});
+				} catch (retryError) {
+					console.error(
+						`Retry with parsed JSON also failed for tool ${toolName} on ${client.name}:`,
+						retryError
+					);
+					throw retryError;
+				}
+			}
+
 			console.error(
 				`Failed to call tool ${toolName} on ${client.name}:`,
 				error
@@ -505,11 +846,18 @@ export class MCPManager {
 		for (const config of currentConfigs) {
 			if (config.enabled) {
 				const existing = this.clients.get(config.id);
-				if (
-					!existing ||
-					JSON.stringify(existing.config) !== JSON.stringify(config)
-				) {
+				if (!existing || !existing.connected) {
 					await this.connectClient(config);
+				} else {
+					const criticalConfigChanged =
+						existing.config.transport.type !== config.transport.type ||
+						existing.config.transport.command !== config.transport.command ||
+						existing.config.transport.url !== config.transport.url ||
+						existing.config.transport.args !== config.transport.args;
+
+					if (criticalConfigChanged) {
+						await this.connectClient(config);
+					}
 				}
 			}
 		}
@@ -519,6 +867,11 @@ export class MCPManager {
 	 * Shutdown all clients
 	 */
 	async shutdown(): Promise<void> {
+		for (const timer of this.reconnectionTimers.values()) {
+			clearTimeout(timer);
+		}
+		this.reconnectionTimers.clear();
+
 		const disconnectPromises = Array.from(this.clients.keys()).map((clientId) =>
 			this.disconnectClient(clientId)
 		);
@@ -526,5 +879,6 @@ export class MCPManager {
 		await Promise.allSettled(disconnectPromises);
 		this.clients.clear();
 		this.connectionAttempts.clear();
+		this.toolsCache.clear();
 	}
 }
