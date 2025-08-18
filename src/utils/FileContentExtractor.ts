@@ -37,21 +37,13 @@ export class FileContentExtractor {
 	 */
 	async getFileContent(path: string): Promise<string | null> {
 		try {
-			console.log(`[FileContentExtractor] Attempting to read file: ${path}`);
-
 			const file = this.app.vault.getAbstractFileByPath(path);
 
 			if (file instanceof TFile) {
-				console.log(
-					`[FileContentExtractor] Found file by exact path: ${file.path}`
-				);
 				return await this.app.vault.read(file);
 			}
 
 			const files = this.app.vault.getMarkdownFiles();
-			console.log(
-				`[FileContentExtractor] Searching among ${files.length} markdown files`
-			);
 
 			const fileByName = files.find((f) => {
 				const matches = [
@@ -64,21 +56,13 @@ export class FileContentExtractor {
 					path.endsWith(f.name),
 				];
 
-				if (matches.some((m) => m)) {
-					console.log(
-						`[FileContentExtractor] Found potential match: ${f.path} for ${path}`
-					);
-				}
-
 				return matches.some((m) => m);
 			});
 
 			if (fileByName) {
-				console.log(`[FileContentExtractor] Using file: ${fileByName.path}`);
 				return await this.app.vault.read(fileByName);
 			}
 
-			console.log(`[FileContentExtractor] No file found for path: ${path}`);
 			return null;
 		} catch (error) {
 			console.error(
@@ -103,23 +87,13 @@ export class FileContentExtractor {
 		const attachments: string[] = [];
 
 		for (const link of links) {
-			console.log(
-				`[FileContentExtractor] Processing link: ${link.path} (display: ${link.displayName})`
-			);
 			const content = await this.getFileContent(link.path);
 			if (content) {
 				const fileName =
 					link.displayName || link.path.split("/").pop() || link.path;
-				console.log(
-					`[FileContentExtractor] Successfully attached content for: ${fileName}`
-				);
 				attachments.push(`<attachedcontent file="${fileName}" path="${link.path}">
 ${content}
 </attachedcontent>`);
-			} else {
-				console.log(
-					`[FileContentExtractor] No content found for: ${link.path}`
-				);
 			}
 		}
 

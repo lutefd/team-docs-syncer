@@ -42,13 +42,10 @@ export class StatusIndicator extends Component {
 		this.registerInterval(
 			window.setInterval(() => this.checkStatus(), 30 * 1000)
 		);
-
-		console.log("Status Indicator loaded");
 	}
 
 	onunload(): void {
 		this.hideStatusTooltip();
-		console.log("Status Indicator unloaded");
 	}
 
 	/**

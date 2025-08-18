@@ -58,7 +58,6 @@ export class ChatInput extends Component {
 			mode: this.options.mode,
 			onSelectionChange: (selection) => {
 				this.currentProviderSelection = selection;
-				console.log("[ChatInput] Provider selection changed:", selection);
 
 				if (this.options.onProviderChange) {
 					this.options.onProviderChange(selection);
@@ -101,7 +100,6 @@ export class ChatInput extends Component {
 
 		this.mentionHandler = new MentionHandler(this.plugin, {
 			onMentionSelect: (item) => {
-				console.log("[ChatInput] Mention selected:", item);
 				this.updateRawContent();
 			},
 		});
@@ -152,7 +150,6 @@ export class ChatInput extends Component {
 		const modal = new MCPModal(this.plugin, {
 			initialSelection: this.currentMCPSelection,
 			onSelectionChange: (selection) => {
-				console.log("[ChatInput] MCP selection changed:", selection);
 				this.currentMCPSelection = selection;
 				this.updateMCPButtonState();
 
@@ -182,8 +179,6 @@ export class ChatInput extends Component {
 	private handleSend(): void {
 		const message = (this.inputEl.value || "").trim();
 		if (!message) return;
-
-		console.log("[ChatInput] Sending message:", message);
 
 		this.inputEl.value = "";
 		this.rawContent = "";

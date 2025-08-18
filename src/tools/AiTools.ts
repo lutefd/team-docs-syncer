@@ -266,16 +266,9 @@ export function buildTools(plugin: TeamDocsPlugin) {
 				instructions?: string;
 			}) => {
 				return withRetry(async () => {
-					console.log("[propose_edit] Called with:", {
-						path,
-						contentLength: content?.length || 0,
-						instructions,
-					});
-
 					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
 					if (!isInsideTeam(cleanPath)) {
-						console.log("[propose_edit] Path outside team folder:", cleanPath);
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -285,7 +278,6 @@ export function buildTools(plugin: TeamDocsPlugin) {
 					}
 
 					if (!content || content.trim().length === 0) {
-						console.log("[propose_edit] No content provided");
 						return {
 							error: {
 								code: "no-content-provided",
@@ -300,13 +292,6 @@ export function buildTools(plugin: TeamDocsPlugin) {
 						content,
 						instructions: instructions || "",
 					};
-
-					console.log("[propose_edit] Returning result:", {
-						ok: result.ok,
-						path: result.path,
-						contentLength: result.content.length,
-						instructions: result.instructions,
-					});
 
 					return result;
 				});

@@ -76,7 +76,6 @@ export class FileHandler {
 		if (!file.path.startsWith(this.plugin.settings.teamDocsPath + "/")) return;
 
 		if (this.processingFiles.has(file.path)) {
-			console.log(`Already processing ${file.path}, skipping...`);
 			return;
 		}
 
@@ -120,9 +119,6 @@ export class FileHandler {
 
 			if (online) {
 				if (!reservation) {
-					console.log(
-						`No reservation found for ${file.path}, attempting to reserve...`
-					);
 					let reserved = await this.plugin.reservationManager.reserveFile(file);
 					if (!reserved) {
 						await this.plugin.reservationManager.syncReservationsFromGit();
@@ -136,22 +132,12 @@ export class FileHandler {
 				} else if (reservation.userName === this.plugin.settings.userName) {
 					const timeRemaining = reservation.expiresAt - Date.now();
 					if (timeRemaining <= this.EXTEND_THRESHOLD) {
-						console.log(
-							`Reservation for ${file.path} expires soon (${Math.round(
-								timeRemaining / 60000
-							)}min), extending...`
-						);
 						const extended =
 							await this.plugin.reservationManager.extendReservation(file);
 						if (!extended) {
 							console.warn(`Failed to extend reservation for ${file.path}`);
 						}
 					} else {
-						console.log(
-							`Reservation for ${file.path} still valid for ${Math.round(
-								timeRemaining / 60000
-							)} minutes, no extension needed`
-						);
 					}
 				}
 			}
@@ -208,7 +194,6 @@ export class FileHandler {
 
 		try {
 			await this.app.fileManager.renameFile(file, destPath);
-			console.log(`Moved attachment to ${destPath}`);
 		} catch (e) {
 			console.warn(
 				"Failed to move attachment to target directory:",
@@ -327,14 +312,12 @@ export class FileHandler {
 	 */
 	private async autoCommitFile(file: TFile) {
 		if (this.processingFiles.has(file.path)) {
-			console.log(`File ${file.path} is being processed, skipping auto-commit`);
 			return;
 		}
 
 		try {
 			const teamDocsFullPath = await this.plugin.gitService.getTeamDocsPath();
 			if (!teamDocsFullPath) {
-				console.log("Could not determine team docs path");
 				return;
 			}
 
@@ -345,9 +328,6 @@ export class FileHandler {
 				!reservation ||
 				reservation.userName !== this.plugin.settings.userName
 			) {
-				console.log(
-					`No valid reservation for ${file.path}, skipping auto-commit`
-				);
 				return;
 			}
 
@@ -370,10 +350,8 @@ export class FileHandler {
 				message: "Local changes ready to sync",
 				timestamp: Date.now(),
 			});
-
-			console.log(`Auto-committed changes for ${file.path}`);
 		} catch (error) {
-			console.log("Auto-commit failed:", error);
+			console.error("Auto-commit failed:", error);
 		}
 	}
 

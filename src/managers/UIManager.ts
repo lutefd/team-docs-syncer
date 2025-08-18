@@ -114,7 +114,7 @@ export class UIManager {
 				}
 			}
 		} catch (e) {
-			console.log("Failed to enforce read-view:", e);
+			console.error("Failed to enforce read-view:", e);
 		}
 	}
 

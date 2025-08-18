@@ -11,7 +11,7 @@ export interface EditReservation {
 	expiresAt: number;
 }
 
-/**
+/*
  * Manages file reservations for collaborative editing
  */
 export class EditReservationManager extends Component {
@@ -34,12 +34,10 @@ export class EditReservationManager extends Component {
 
 	onload(): void {
 		this.startReservationChecker();
-		console.log("Edit Reservation Manager loaded");
 	}
 
 	onunload(): void {
 		this.destroy();
-		console.log("Edit Reservation Manager unloaded");
 	}
 
 	/**
@@ -49,7 +47,6 @@ export class EditReservationManager extends Component {
 		const filePath = file.path;
 
 		if (this.pendingOperations.has(filePath)) {
-			console.log(`Reservation operation already pending for ${filePath}`);
 			await this.pendingOperations.get(filePath);
 			return (
 				this.getFileReservation(filePath)?.userName ===
@@ -80,9 +77,6 @@ export class EditReservationManager extends Component {
 			existingReservation.userName !== this.plugin.settings.userName
 		) {
 			if (Date.now() < existingReservation.expiresAt) {
-				console.log(
-					`File ${filePath} is reserved by ${existingReservation.userName}`
-				);
 				new Notice(
 					`File is being edited by ${existingReservation.userName}. Try again later.`
 				);
@@ -95,7 +89,6 @@ export class EditReservationManager extends Component {
 			existingReservation.userName === this.plugin.settings.userName &&
 			Date.now() < existingReservation.expiresAt
 		) {
-			console.log(`Already have valid reservation for ${filePath}`);
 			return true;
 		}
 
@@ -112,17 +105,13 @@ export class EditReservationManager extends Component {
 			await this.commitReservation(reservation, "reserve");
 			await this.pushReservation();
 
-			console.log(`Successfully reserved ${filePath}`);
 			new Notice(`File reserved for editing (15 min)`, 3000);
 			try {
 				this.plugin.uiManager.updateFileReservationUI(file);
-			} catch (e) {
-				console.log("Failed to update reservation UI after reserve:", e);
-			}
+			} catch (e) {}
 			return true;
 		} catch (error) {
 			this.reservations.delete(filePath);
-			console.error(`Failed to reserve ${filePath}:`, error);
 			new Notice("Failed to reserve file. Please try again.");
 			return false;
 		}
@@ -148,7 +137,6 @@ export class EditReservationManager extends Component {
 			try {
 				await this.commitReservation(reservation, "release");
 				await this.pushReservation();
-				console.log(`Released reservation for ${filePath}`);
 				new Notice("File reservation released", 2000);
 			} catch (error) {
 				this.reservations.set(filePath, reservation);
@@ -179,20 +167,10 @@ export class EditReservationManager extends Component {
 		const timeSinceLastExtension = now - lastExtension;
 
 		if (timeRemaining > this.EXTEND_THRESHOLD) {
-			console.log(
-				`Reservation for ${filePath} still has ${Math.round(
-					timeRemaining / 60000
-				)} minutes, no extension needed`
-			);
 			return false;
 		}
 
 		if (timeSinceLastExtension < 2 * 60 * 1000) {
-			console.log(
-				`Extension for ${filePath} was recent (${Math.round(
-					timeSinceLastExtension / 1000
-				)}s ago), skipping`
-			);
 			return false;
 		}
 
@@ -208,9 +186,6 @@ export class EditReservationManager extends Component {
 			await this.pushReservation();
 
 			const minutesLeft = Math.round(timeRemaining / 60000);
-			console.log(
-				`Extended reservation for ${filePath} (was ${minutesLeft}min remaining)`
-			);
 
 			if (timeRemaining < 2 * 60 * 1000) {
 				new Notice(`Reservation extended (+15 min)`, 2000);
@@ -272,10 +247,7 @@ export class EditReservationManager extends Component {
 			reservation.userName
 		} - ${new Date(reservation.timestamp).toISOString()}`;
 
-		await this.plugin.gitService.gitCommand(
-			teamDocsPath,
-			`add -A`
-		);
+		await this.plugin.gitService.gitCommand(teamDocsPath, `add -A`);
 		await this.plugin.gitService.gitCommandRetry(
 			teamDocsPath,
 			`commit --allow-empty -m "${message}"`
@@ -332,7 +304,6 @@ export class EditReservationManager extends Component {
 		}
 
 		for (const key of expiredKeys) {
-			console.log(`Removing expired reservation for ${key}`);
 			this.reservations.delete(key);
 			this.lastExtensionTime.delete(key);
 		}
@@ -373,8 +344,6 @@ export class EditReservationManager extends Component {
 					this.reservations.set(filePath, reservation);
 				}
 			}
-
-			console.log(`Synced reservations: ${this.reservations.size} active`);
 		} catch (error) {
 			console.error("Failed to sync reservations from git:", error);
 		}
