@@ -16,6 +16,8 @@ export interface TeamDocsSettings {
 	ai: AiProviderSettings;
 	mcpClients: MCPClientConfig[];
 
+	aiScope: "team-docs" | "vault-wide";
+
 	openaiApiKey?: string;
 	openaiModel?: string;
 	openaiTemperature: number;
@@ -61,6 +63,8 @@ export const DEFAULT_SETTINGS: TeamDocsSettings = {
 
 	ai: DEFAULT_AI_PROVIDER_SETTINGS,
 	mcpClients: [],
+
+	aiScope: "team-docs",
 
 	// Legacy settings (for migration)
 	openaiApiKey: "",
