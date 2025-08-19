@@ -304,14 +304,7 @@ export class TeamActivityFeedView extends ItemView {
 	private async openFile(relativePath: string): Promise<void> {
 		const teamDocsPath = this.plugin.settings.teamDocsPath;
 		const vaultPath = `${teamDocsPath}/${relativePath}`;
-
-		console.log("TeamActivityFeed openFile debug:");
-		console.log("  relativePath:", relativePath);
-		console.log("  teamDocsPath:", teamDocsPath);
-		console.log("  constructed vaultPath:", vaultPath);
-
 		const file = this.app.vault.getAbstractFileByPath(vaultPath);
-		console.log("  file found:", !!file);
 
 		if (file) {
 			await this.app.workspace.openLinkText(vaultPath, "", false);
