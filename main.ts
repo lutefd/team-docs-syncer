@@ -16,6 +16,7 @@ import { MarkdownIndexService } from "./src/services/MarkdownIndexService";
 import { ChatSessionService } from "./src/services/ChatSessionService";
 import { CHATBOT_VIEW, ChatbotView } from "./src/ui/ChatbotView";
 import { MCPManager } from "./src/managers/MCPManager";
+import { PathUtils } from "./src/utils/PathUtils";
 
 /**
  * Main plugin class for Team Docs Git Sync functionality
@@ -36,6 +37,8 @@ export default class TeamDocsPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		PathUtils.setAiScope(this.settings.aiScope);
 
 		this.initializeServices();
 		this.setupViews();
@@ -118,6 +121,8 @@ export default class TeamDocsPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.settings);
 		this.setupAutoSync();
+
+		PathUtils.setAiScope(this.settings.aiScope);
 
 		if (this.mcpManager) {
 			await this.mcpManager.refreshClients();
