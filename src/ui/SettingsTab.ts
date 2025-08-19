@@ -401,7 +401,7 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 							.onChange(async (value) => {
 								this.plugin.settings.mcpClients[index].transport.command =
 									value;
-								await this.plugin.saveSettings(); // Only save settings, don't refresh
+								await this.plugin.saveSettings();
 							})
 					);
 				commandSetting.settingEl.addClass("transport-field");
@@ -416,7 +416,7 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 							.setValue(client.transport.args || "")
 							.onChange(async (value) => {
 								this.plugin.settings.mcpClients[index].transport.args = value;
-								await this.plugin.saveSettings(); // Only save settings, don't refresh
+								await this.plugin.saveSettings();
 							})
 					);
 				argsSetting.settingEl.addClass("transport-field");
@@ -434,7 +434,7 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 							.setValue(client.transport.url || "")
 							.onChange(async (value) => {
 								this.plugin.settings.mcpClients[index].transport.url = value;
-								await this.plugin.saveSettings(); // Only save settings, don't refresh
+								await this.plugin.saveSettings();
 							})
 					);
 				urlSetting.settingEl.addClass("transport-field");
