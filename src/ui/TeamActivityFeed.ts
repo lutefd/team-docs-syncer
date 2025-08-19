@@ -1,5 +1,6 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice } from "obsidian";
 import TeamDocsPlugin from "../../main";
+import { PathUtils } from "../utils/PathUtils";
 
 export const ACTIVITY_FEED_VIEW = "team-activity-feed";
 
@@ -140,27 +141,37 @@ export class TeamActivityFeedView extends ItemView {
 		const activityTimestamp = new Date(timestamp).getTime();
 
 		if (message.includes("[RESERVE]")) {
-			const match = message.match(/\[RESERVE\] (.+?) - /);
-			const filePath = match ? match[1] : "unknown file";
+			const match = message.match(/\[RESERVE\] (.+) - ([^-]+) - (.+)/);
+			const gitPath = match ? match[1] : "unknown file";
+			const relativePath = PathUtils.cleanGitPath(
+				gitPath,
+				this.plugin.settings.teamDocsPath
+			);
+			const fileName = PathUtils.getFileName(relativePath);
 			return {
 				id: hash,
 				type: "reservation",
 				user: author,
-				message: `Reserved ${filePath} for editing`,
-				filePath,
+				message: `Reserved ${fileName} for editing`,
+				filePath: relativePath,
 				timestamp: activityTimestamp,
 			};
 		}
 
 		if (message.includes("[RELEASE]")) {
-			const match = message.match(/\[RELEASE\] (.+?) - /);
-			const filePath = match ? match[1] : "unknown file";
+			const match = message.match(/\[RELEASE\] (.+) - ([^-]+) - (.+)/);
+			const gitPath = match ? match[1] : "unknown file";
+			const relativePath = PathUtils.cleanGitPath(
+				gitPath,
+				this.plugin.settings.teamDocsPath
+			);
+			const fileName = PathUtils.getFileName(relativePath);
 			return {
 				id: hash,
 				type: "reservation",
 				user: author,
-				message: `Released ${filePath}`,
-				filePath,
+				message: `Released ${fileName}`,
+				filePath: relativePath,
 				timestamp: activityTimestamp,
 			};
 		}
@@ -240,8 +251,9 @@ export class TeamActivityFeedView extends ItemView {
 
 			if (activity.filePath) {
 				const fileLinkEl = contentEl.createEl("div", { cls: "activity-file" });
+				const fileName = PathUtils.getFileName(activity.filePath);
 				const link = fileLinkEl.createEl("a", {
-					text: activity.filePath,
+					text: fileName,
 					cls: "internal-link",
 				});
 				link.onclick = () => this.openFile(activity.filePath!);
@@ -289,10 +301,23 @@ export class TeamActivityFeedView extends ItemView {
 	/**
 	 * Opens a file in the workspace
 	 */
-	private async openFile(filePath: string): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(filePath);
+	private async openFile(relativePath: string): Promise<void> {
+		const teamDocsPath = this.plugin.settings.teamDocsPath;
+		const vaultPath = `${teamDocsPath}/${relativePath}`;
+
+		console.log("TeamActivityFeed openFile debug:");
+		console.log("  relativePath:", relativePath);
+		console.log("  teamDocsPath:", teamDocsPath);
+		console.log("  constructed vaultPath:", vaultPath);
+
+		const file = this.app.vault.getAbstractFileByPath(vaultPath);
+		console.log("  file found:", !!file);
+
 		if (file) {
-			await this.app.workspace.openLinkText(filePath, "", false);
+			await this.app.workspace.openLinkText(vaultPath, "", false);
+		} else {
+			const fileName = PathUtils.getFileName(relativePath);
+			new Notice(`File "${fileName}" not found in your local team docs folder`);
 		}
 	}
 
