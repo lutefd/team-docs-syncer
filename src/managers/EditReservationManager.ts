@@ -1,5 +1,6 @@
 import { App, TFile, Notice, Component } from "obsidian";
 import TeamDocsPlugin from "../../main";
+import { PathUtils } from "../utils/PathUtils";
 
 /**
  * Represents a file reservation for collaborative editing
@@ -69,9 +70,15 @@ export class EditReservationManager extends Component {
 	 * Internal method to perform the actual reservation
 	 */
 	private async performReservation(file: TFile): Promise<boolean> {
-		const filePath = file.path;
+		const teamDocsPath = this.plugin.settings.teamDocsPath;
+		const relativePath = PathUtils.toRelativePath(file.path, teamDocsPath);
 
-		const existingReservation = this.reservations.get(filePath);
+		if (!relativePath) {
+			new Notice("File is not within team docs folder");
+			return false;
+		}
+
+		const existingReservation = this.reservations.get(relativePath);
 		if (
 			existingReservation &&
 			existingReservation.userName !== this.plugin.settings.userName
@@ -93,13 +100,13 @@ export class EditReservationManager extends Component {
 		}
 
 		const reservation: EditReservation = {
-			filePath,
+			filePath: relativePath,
 			userName: this.plugin.settings.userName,
 			timestamp: Date.now(),
 			expiresAt: Date.now() + this.RESERVATION_DURATION,
 		};
 
-		this.reservations.set(filePath, reservation);
+		this.reservations.set(relativePath, reservation);
 
 		try {
 			await this.commitReservation(reservation, "reserve");
@@ -111,7 +118,7 @@ export class EditReservationManager extends Component {
 			} catch (e) {}
 			return true;
 		} catch (error) {
-			this.reservations.delete(filePath);
+			this.reservations.delete(relativePath);
 			new Notice("Failed to reserve file. Please try again.");
 			return false;
 		}
@@ -121,26 +128,33 @@ export class EditReservationManager extends Component {
 	 * Releases the reservation for a specific file
 	 */
 	async releaseFile(file: TFile): Promise<void> {
-		await this.releaseReservationByPath(file.path);
+		const teamDocsPath = this.plugin.settings.teamDocsPath;
+		const relativePath = PathUtils.toRelativePath(file.path, teamDocsPath);
+		if (relativePath) {
+			await this.releaseReservationByPath(relativePath);
+		}
 	}
 
 	/**
-	 * Releases a reservation by file path
+	 * Releases a reservation by relative file path
 	 */
-	async releaseReservationByPath(filePath: string): Promise<void> {
-		const reservation = this.reservations.get(filePath);
+	async releaseReservationByPath(relativePath: string): Promise<void> {
+		const reservation = this.reservations.get(relativePath);
 
 		if (reservation && reservation.userName === this.plugin.settings.userName) {
-			this.reservations.delete(filePath);
-			this.lastExtensionTime.delete(filePath);
+			this.reservations.delete(relativePath);
+			this.lastExtensionTime.delete(relativePath);
 
 			try {
 				await this.commitReservation(reservation, "release");
 				await this.pushReservation();
 				new Notice("File reservation released", 2000);
 			} catch (error) {
-				this.reservations.set(filePath, reservation);
-				console.error(`Failed to release reservation for ${filePath}:`, error);
+				this.reservations.set(relativePath, reservation);
+				console.error(
+					`Failed to release reservation for ${relativePath}:`,
+					error
+				);
 				new Notice("Failed to release reservation. Please try again.");
 			}
 		}
@@ -151,8 +165,14 @@ export class EditReservationManager extends Component {
 	 * Only extends if reservation is close to expiring and hasn't been extended recently
 	 */
 	async extendReservation(file: TFile): Promise<boolean> {
-		const filePath = file.path;
-		const reservation = this.reservations.get(filePath);
+		const teamDocsPath = this.plugin.settings.teamDocsPath;
+		const relativePath = PathUtils.toRelativePath(file.path, teamDocsPath);
+
+		if (!relativePath) {
+			return false;
+		}
+
+		const reservation = this.reservations.get(relativePath);
 
 		if (
 			!reservation ||
@@ -163,7 +183,7 @@ export class EditReservationManager extends Component {
 
 		const now = Date.now();
 		const timeRemaining = reservation.expiresAt - now;
-		const lastExtension = this.lastExtensionTime.get(filePath) || 0;
+		const lastExtension = this.lastExtensionTime.get(relativePath) || 0;
 		const timeSinceLastExtension = now - lastExtension;
 
 		if (timeRemaining > this.EXTEND_THRESHOLD) {
@@ -178,8 +198,8 @@ export class EditReservationManager extends Component {
 		const oldTimestamp = reservation.timestamp;
 		reservation.timestamp = now;
 		reservation.expiresAt = now + this.RESERVATION_DURATION;
-		this.reservations.set(filePath, reservation);
-		this.lastExtensionTime.set(filePath, now);
+		this.reservations.set(relativePath, reservation);
+		this.lastExtensionTime.set(relativePath, now);
 
 		try {
 			await this.commitReservation(reservation, "extend");
@@ -195,24 +215,40 @@ export class EditReservationManager extends Component {
 		} catch (error) {
 			reservation.expiresAt = oldExpiresAt;
 			reservation.timestamp = oldTimestamp;
-			this.reservations.set(filePath, reservation);
-			this.lastExtensionTime.delete(filePath);
-			console.error(`Failed to extend reservation for ${filePath}:`, error);
+			this.reservations.set(relativePath, reservation);
+			this.lastExtensionTime.delete(relativePath);
+			console.error(`Failed to extend reservation for ${relativePath}:`, error);
 			return false;
 		}
 	}
 
 	/**
-	 * Gets the active reservation for a file path
+	 * Gets the active reservation for a file path (accepts absolute path)
 	 */
-	getFileReservation(filePath: string): EditReservation | null {
-		const reservation = this.reservations.get(filePath);
+	getFileReservation(absolutePath: string): EditReservation | null {
+		const teamDocsPath = this.plugin.settings.teamDocsPath;
+		const relativePath = PathUtils.toRelativePath(absolutePath, teamDocsPath);
+
+		if (!relativePath) {
+			return null;
+		}
+
+		return this.getFileReservationByRelativePath(relativePath);
+	}
+
+	/**
+	 * Gets the active reservation for a relative file path
+	 */
+	getFileReservationByRelativePath(
+		relativePath: string
+	): EditReservation | null {
+		const reservation = this.reservations.get(relativePath);
 		if (reservation && Date.now() < reservation.expiresAt) {
 			return reservation;
 		}
 		if (reservation && Date.now() >= reservation.expiresAt) {
-			this.reservations.delete(filePath);
-			this.lastExtensionTime.delete(filePath);
+			this.reservations.delete(relativePath);
+			this.lastExtensionTime.delete(relativePath);
 		}
 		return null;
 	}
@@ -243,7 +279,8 @@ export class EditReservationManager extends Component {
 		const teamDocsPath = await this.plugin.gitService.getTeamDocsPath();
 		if (!teamDocsPath) throw new Error("Team docs path not found");
 
-		const message = `[${action.toUpperCase()}] ${reservation.filePath} - ${
+		const fullGitPath = `${this.plugin.settings.teamDocsPath}/${reservation.filePath}`;
+		const message = `[${action.toUpperCase()}] ${fullGitPath} - ${
 			reservation.userName
 		} - ${new Date(reservation.timestamp).toISOString()}`;
 
@@ -297,8 +334,12 @@ export class EditReservationManager extends Component {
 				const timeLeft = Math.round(
 					(reservation.expiresAt - now) / (1000 * 60)
 				);
+				const teamDocsPath = this.plugin.settings.teamDocsPath;
+				const absolutePath = PathUtils.toAbsolutePath(filePath, teamDocsPath);
 				new Notice(
-					`Reservation for ${filePath} expires in ${timeLeft} minutes. Extend or release it soon.`
+					`Reservation for ${PathUtils.getFileName(
+						absolutePath
+					)} expires in ${timeLeft} minutes. Extend or release it soon.`
 				);
 			}
 		}
@@ -353,26 +394,34 @@ export class EditReservationManager extends Component {
 	 * Parses a reservation from a Git commit line
 	 */
 	private parseReservationFromCommit(commitLine: string): void {
-		const reserveMatch = commitLine.match(/\[RESERVE\] (.+?) - (.+?) - (.+)/);
-		const releaseMatch = commitLine.match(/\[RELEASE\] (.+?) - (.+?) - (.+)/);
-		const extendMatch = commitLine.match(/\[EXTEND\] (.+?) - (.+?) - (.+)/);
+		const reserveMatch = commitLine.match(/\[RESERVE\] (.+) - ([^-]+) - (.+)/);
+		const releaseMatch = commitLine.match(/\[RELEASE\] (.+) - ([^-]+) - (.+)/);
+		const extendMatch = commitLine.match(/\[EXTEND\] (.+) - ([^-]+) - (.+)/);
 
 		if (reserveMatch || extendMatch) {
 			const match = reserveMatch || extendMatch;
-			const [, filePath, userName, timestamp] = match!;
+			const [, gitFilePath, userName, timestamp] = match!;
+			const cleanFilePath = PathUtils.cleanGitPath(
+				gitFilePath,
+				this.plugin.settings.teamDocsPath
+			);
 			const reservation: EditReservation = {
-				filePath,
+				filePath: cleanFilePath,
 				userName,
 				timestamp: new Date(timestamp).getTime(),
 				expiresAt: new Date(timestamp).getTime() + this.RESERVATION_DURATION,
 			};
 
 			if (Date.now() < reservation.expiresAt) {
-				this.reservations.set(filePath, reservation);
+				this.reservations.set(cleanFilePath, reservation);
 			}
 		} else if (releaseMatch) {
-			const [, filePath] = releaseMatch;
-			this.reservations.delete(filePath);
+			const [, gitFilePath] = releaseMatch;
+			const cleanFilePath = PathUtils.cleanGitPath(
+				gitFilePath,
+				this.plugin.settings.teamDocsPath
+			);
+			this.reservations.delete(cleanFilePath);
 		}
 	}
 
