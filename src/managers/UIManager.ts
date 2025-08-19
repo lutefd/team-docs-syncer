@@ -3,6 +3,7 @@ import TeamDocsPlugin from "../../main";
 import { ACTIVITY_FEED_VIEW } from "../ui/TeamActivityFeed";
 import { CHATBOT_VIEW } from "../ui/ChatbotView";
 import { ConfirmationModal } from "../ui/ConfirmationModal";
+import { PathUtils } from "../utils/PathUtils";
 
 /**
  * Manages UI updates and interactions
@@ -57,7 +58,7 @@ export class UIManager {
 	 * Updates the file reservation indicator in the UI
 	 */
 	updateFileReservationUI(file: TFile) {
-		if (!file.path.startsWith(this.plugin.settings.teamDocsPath + "/")) {
+		if (!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)) {
 			return;
 		}
 
