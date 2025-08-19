@@ -1,5 +1,6 @@
 import { Component } from "obsidian";
 import TeamDocsPlugin from "../../../main";
+import { PathUtils } from "../../utils/PathUtils";
 
 export interface MentionHandlerOptions {
 	onMentionSelect?: (item: string) => void;
@@ -181,7 +182,7 @@ export class MentionHandler extends Component {
 		const teamDocsPath = this.plugin.settings.teamDocsPath;
 
 		this.mentionItems = files
-			.filter((file) => file.path.startsWith(teamDocsPath))
+			.filter((file) => PathUtils.isWithinAiScope(file.path, teamDocsPath))
 			.map((file) => file.path)
 			.filter((path) => path.toLowerCase().includes(query))
 			.slice(0, 10);

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { tool } from "ai";
 import type TeamDocsPlugin from "../../main";
 import { TAbstractFile, TFile, TFolder } from "obsidian";
+import { PathUtils } from "../utils/PathUtils";
 
 const withRetry = async <T>(
 	operation: () => Promise<T>,
@@ -33,7 +34,7 @@ const cleanAndResolvePath = (path: string, teamRoot: string): string => {
 		if (!cleanPath.endsWith(".md")) {
 			cleanPath += ".md";
 		}
-		if (!cleanPath.startsWith(teamRoot + "/")) {
+		if (!PathUtils.isWithinTeamDocs(cleanPath, teamRoot)) {
 			cleanPath = teamRoot + "/" + cleanPath;
 		}
 	}
@@ -42,8 +43,8 @@ const cleanAndResolvePath = (path: string, teamRoot: string): string => {
 
 export function buildTools(plugin: TeamDocsPlugin) {
 	const teamRoot = plugin.settings.teamDocsPath;
-	const isInsideTeam = (p: string) =>
-		!!teamRoot && p.startsWith(teamRoot + "/");
+	const isInsideAiScope = (p: string) =>
+		PathUtils.isWithinAiScope(p, teamRoot);
 
 	return {
 		search_docs: tool({
@@ -100,7 +101,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 				return withRetry(async () => {
 					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
-					if (!isInsideTeam(cleanPath)) {
+					if (!isInsideAiScope(cleanPath)) {
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -197,16 +198,16 @@ export function buildTools(plugin: TeamDocsPlugin) {
 						let linkPath = match[1];
 						if (!linkPath.endsWith(".md")) linkPath += ".md";
 
-						if (!linkPath.startsWith(teamRoot + "/")) {
+						if (!PathUtils.isWithinTeamDocs(linkPath, teamRoot)) {
 							const currentDir = path.substring(0, path.lastIndexOf("/"));
 							const resolvedPath = currentDir + "/" + linkPath;
-							linkPath = isInsideTeam(resolvedPath)
+							linkPath = PathUtils.isWithinTeamDocs(resolvedPath, teamRoot)
 								? resolvedPath
 								: teamRoot + "/" + linkPath;
 						}
 
 						if (
-							isInsideTeam(linkPath) &&
+							isInsideAiScope(linkPath) &&
 							linkPath !== path &&
 							!visited.has(linkPath) &&
 							!links.includes(linkPath)
@@ -268,7 +269,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 				return withRetry(async () => {
 					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
-					if (!isInsideTeam(cleanPath)) {
+					if (!isInsideAiScope(cleanPath)) {
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -327,7 +328,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 				return withRetry(async () => {
 					const cleanPath = cleanAndResolvePath(path, teamRoot);
 
-					if (!isInsideTeam(cleanPath)) {
+					if (!isInsideAiScope(cleanPath)) {
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -409,7 +410,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 					const cleanPath = path
 						? cleanAndResolvePath(path, teamRoot)
 						: teamRoot;
-					if (!isInsideTeam(cleanPath)) {
+					if (!isInsideAiScope(cleanPath)) {
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -497,7 +498,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 					let count = 0;
 					for (const file of allFiles) {
-						if (!isInsideTeam(file.path)) continue;
+						if (!isInsideAiScope(file.path)) continue;
 
 						const meta = cache.getFileCache(file);
 						const hasTag =
@@ -555,7 +556,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 			}) => {
 				return withRetry(async () => {
 					const cleanPath = cleanAndResolvePath(path, teamRoot);
-					if (!isInsideTeam(cleanPath)) {
+					if (!isInsideAiScope(cleanPath)) {
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -574,7 +575,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 					let count = 0;
 					for (const [linkingPath, links] of Object.entries(resolvedLinks)) {
-						if (links[cleanPath] && isInsideTeam(linkingPath)) {
+						if (links[cleanPath] && isInsideAiScope(linkingPath)) {
 							const file = plugin.app.vault.getAbstractFileByPath(linkingPath);
 							if (file instanceof TFile) {
 								let snippet: string | undefined;
@@ -637,7 +638,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 			}) => {
 				return withRetry(async () => {
 					const cleanPath = cleanAndResolvePath(path, teamRoot);
-					if (!isInsideTeam(cleanPath)) {
+					if (!isInsideAiScope(cleanPath)) {
 						return {
 							error: {
 								code: "outside-sync-folder",
@@ -668,7 +669,7 @@ export function buildTools(plugin: TeamDocsPlugin) {
 
 						const outgoing = resolvedLinks[current] || {};
 						for (const [to, _] of Object.entries(outgoing)) {
-							if (isInsideTeam(to) && !visited.has(to)) {
+							if (isInsideAiScope(to) && !visited.has(to)) {
 								edges.push({ from: current, to });
 								queue.push({ path: to, depth: depth + 1 });
 							}
