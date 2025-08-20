@@ -90,13 +90,24 @@ export class ProviderChooser extends Component {
 	 * Get the last used provider/model selection from settings
 	 */
 	private getLastUsedSelection(): ProviderSelection | null {
-		const { lastUsedProvider, lastUsedModel } = this.options.settings.ai;
+		const { lastUsedProvider, lastUsedModel, lastUsedModels } =
+			this.options.settings.ai;
 
-		if (!lastUsedProvider || !lastUsedModel) {
+		if (!lastUsedProvider) {
 			return null;
 		}
 
 		if (!this.factory.hasValidApiKey(lastUsedProvider)) {
+			return null;
+		}
+
+		let modelToUse = lastUsedModels?.[lastUsedProvider];
+
+		if (!modelToUse && lastUsedProvider && lastUsedModel) {
+			modelToUse = lastUsedModel;
+		}
+
+		if (!modelToUse) {
 			return null;
 		}
 
@@ -105,7 +116,7 @@ export class ProviderChooser extends Component {
 			this.options.mode
 		);
 		const modelExists = availableModels.some(
-			(model) => model.id === lastUsedModel
+			(model) => model.id === modelToUse
 		);
 
 		if (!modelExists) {
@@ -114,7 +125,7 @@ export class ProviderChooser extends Component {
 
 		return {
 			provider: lastUsedProvider,
-			modelId: lastUsedModel,
+			modelId: modelToUse,
 		};
 	}
 
@@ -162,8 +173,28 @@ export class ProviderChooser extends Component {
 	private onProviderChange() {
 		const selectedProvider = this.providerSelectEl.value as AiProvider;
 		this.populateModels(selectedProvider);
-		this.updateStatus(selectedProvider);
-		this.onModelChange();
+
+		setTimeout(() => {
+			const lastUsedModel =
+				this.options.settings.ai.lastUsedModels?.[selectedProvider];
+
+			if (lastUsedModel) {
+				const availableModels = this.factory.getAvailableModels(
+					selectedProvider,
+					this.options.mode
+				);
+
+				const modelExists = availableModels.some(
+					(model) => model.id === lastUsedModel
+				);
+
+				if (modelExists) {
+					this.modelSelectEl.value = lastUsedModel;
+				}
+			}
+			this.updateStatus(selectedProvider);
+			this.onModelChange();
+		}, 0);
 	}
 
 	private async onModelChange() {
@@ -174,6 +205,16 @@ export class ProviderChooser extends Component {
 			const selection = { provider, modelId };
 
 			this.options.settings.ai.lastUsedProvider = provider;
+
+			if (!this.options.settings.ai.lastUsedModels) {
+				this.options.settings.ai.lastUsedModels = {} as Record<
+					AiProvider,
+					string
+				>;
+			}
+
+			this.options.settings.ai.lastUsedModels[provider] = modelId;
+
 			this.options.settings.ai.lastUsedModel = modelId;
 
 			if (this.options.onSettingsChange) {
@@ -231,7 +272,28 @@ export class ProviderChooser extends Component {
 		for (const provider of Object.values(AiProvider)) {
 			if (this.factory.hasValidApiKey(provider)) {
 				this.providerSelectEl.value = provider;
-				this.onProviderChange();
+				this.populateModels(provider);
+
+				setTimeout(() => {
+					const lastUsedModel =
+						this.options.settings.ai.lastUsedModels?.[provider];
+					if (lastUsedModel) {
+						const availableModels = this.factory.getAvailableModels(
+							provider,
+							this.options.mode
+						);
+						const modelExists = availableModels.some(
+							(model) => model.id === lastUsedModel
+						);
+
+						if (modelExists) {
+							this.modelSelectEl.value = lastUsedModel;
+						}
+					}
+
+					this.updateStatus(provider);
+					this.onModelChange();
+				}, 0);
 				break;
 			}
 		}
@@ -255,9 +317,12 @@ export class ProviderChooser extends Component {
 	public setSelection(selection: ProviderSelection) {
 		this.providerSelectEl.value = selection.provider;
 		this.populateModels(selection.provider);
-		this.modelSelectEl.value = selection.modelId;
-		this.updateStatus(selection.provider);
 
+		setTimeout(() => {
+			this.modelSelectEl.value = selection.modelId;
+		}, 0);
+
+		this.updateStatus(selection.provider);
 		this.options.onSelectionChange(selection);
 	}
 
