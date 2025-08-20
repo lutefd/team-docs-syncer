@@ -234,6 +234,15 @@ export class MentionHandler extends Component {
 		});
 
 		document.body.appendChild(this.mentionMenuEl);
+
+		const selectedItem = this.mentionMenuEl.querySelector(
+			".mention-item.is-selected"
+		) as HTMLElement;
+		if (selectedItem) {
+			selectedItem.scrollIntoView({
+				block: "nearest",
+			});
+		}
 	}
 
 	/**
