@@ -22,7 +22,14 @@ export class ChatSessionService {
 	}
 
 	getActive(): ChatSession | null {
-		return this.sessions.find((s) => s.id === this.activeId) || null;
+		const active = this.sessions.find((s) => s.id === this.activeId);
+		if (active) return active;
+
+		if (this.sessions.length === 0 || !this.activeId) {
+			return this.createSession();
+		}
+
+		return null;
 	}
 
 	setActive(id: string): void {
