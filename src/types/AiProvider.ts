@@ -37,7 +37,8 @@ export interface AiProviderSettings {
 	googleApiKey: string;
 
 	lastUsedProvider?: AiProvider;
-	lastUsedModel?: string;
+	lastUsedModel?: string; // Legacy - kept for migration
+	lastUsedModels?: Record<AiProvider, string>;
 	lastUsedMode?: "chat" | "compose" | "write";
 }
 
@@ -57,4 +58,5 @@ export const DEFAULT_AI_PROVIDER_SETTINGS: AiProviderSettings = {
 	ollamaComposeModels: [],
 	ollamaChatModels: [],
 	googleApiKey: "",
+	lastUsedModels: {} as Record<AiProvider, string>,
 };
