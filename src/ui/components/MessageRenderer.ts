@@ -126,37 +126,127 @@ export class MessageRenderer extends Component {
 		const contentEl = row.createEl("div", { cls: "msg-content" });
 
 		let currentContent = "";
+		let finalAnswerContent = "";
 		let isPlaceholder = false;
+		let renderTimeout: NodeJS.Timeout | null = null;
+		const RENDER_DEBOUNCE_MS = 25;
+		let insideThinking = false;
+		let currentThinkingBuffer = "";
+
+		const renderMarkdownDebounced = async (content: string) => {
+			if (renderTimeout) {
+				clearTimeout(renderTimeout);
+			}
+
+			renderTimeout = setTimeout(async () => {
+				if (!content.trim()) return;
+
+				const cleanContent = content.replace(
+					/<attachedcontent[^>]*>[\s\S]*?<\/attachedcontent>/g,
+					""
+				);
+
+				try {
+					contentEl.empty();
+					await MarkdownRenderer.render(
+						this.plugin.app,
+						cleanContent,
+						contentEl,
+						this.plugin.app.workspace.getActiveFile()?.path || "/",
+						this
+					);
+
+					const attachedContentElements =
+						contentEl.querySelectorAll("attachedcontent");
+					attachedContentElements.forEach((el) => el.remove());
+
+					this.linkHandler.fixInternalLinks(contentEl);
+					if (this.options.onFixInternalLinks) {
+						this.options.onFixInternalLinks(contentEl);
+					}
+				} catch (e) {
+					contentEl.textContent = cleanContent;
+					this.linkHandler.fixInternalLinks(contentEl);
+				}
+
+				container.scrollTop = container.scrollHeight;
+			}, RENDER_DEBOUNCE_MS);
+		};
 
 		const updateContent = (text: string) => {
-			const cleanText = text
+			currentContent = text;
+			finalAnswerContent = text
 				.replace(/<think>[\s\S]*?<\/think>/g, "")
 				.replace(/<finalAnswer>/g, "")
 				.replace(/<\/finalAnswer>/g, "");
-
-			currentContent = cleanText;
 			isPlaceholder = false;
-			contentEl.textContent = cleanText;
 			contentEl.removeClass("placeholder");
+
+			if (finalAnswerContent.trim()) {
+				renderMarkdownDebounced(finalAnswerContent);
+			} else {
+				contentEl.textContent = finalAnswerContent;
+			}
 			container.scrollTop = container.scrollHeight;
 		};
 
 		const appendContent = (delta: string) => {
-			const cleanDelta = delta
-				.replace(/<think>/g, "")
-				.replace(/<\/think>/g, "")
-				.replace(/<finalAnswer>/g, "")
-				.replace(/<\/finalAnswer>/g, "");
-
-			if (cleanDelta) {
+			if (delta) {
 				if (isPlaceholder) {
-					currentContent = cleanDelta;
+					currentContent = delta;
+					finalAnswerContent = "";
 					isPlaceholder = false;
 					contentEl.removeClass("placeholder");
 				} else {
-					currentContent += cleanDelta;
+					currentContent += delta;
 				}
-				contentEl.textContent = currentContent;
+
+				let i = 0;
+				while (i < delta.length) {
+					const char = delta[i];
+
+					if (!insideThinking && delta.substring(i).startsWith("<think>")) {
+						insideThinking = true;
+						currentThinkingBuffer = "";
+						i += 7;
+						continue;
+					}
+
+					if (insideThinking && delta.substring(i).startsWith("</think>")) {
+						insideThinking = false;
+						if (currentThinkingBuffer.trim()) {
+							addThinkingSection(currentThinkingBuffer);
+						}
+						currentThinkingBuffer = "";
+						i += 8;
+						continue;
+					}
+
+					if (delta.substring(i).startsWith("<finalAnswer>")) {
+						i += 13;
+						continue;
+					}
+					if (delta.substring(i).startsWith("</finalAnswer>")) {
+						i += 14;
+						continue;
+					}
+
+					if (insideThinking) {
+						currentThinkingBuffer += char;
+					} else {
+						finalAnswerContent += char;
+					}
+
+					i++;
+				}
+
+				if (finalAnswerContent.trim()) {
+					renderMarkdownDebounced(finalAnswerContent);
+				} else if (!isPlaceholder && !finalAnswerContent) {
+					contentEl.textContent = "💭 Processando...";
+					contentEl.addClass("placeholder");
+				}
+
 				container.scrollTop = container.scrollHeight;
 			}
 		};
@@ -227,6 +317,11 @@ export class MessageRenderer extends Component {
 		};
 
 		const finalize = async () => {
+			if (renderTimeout) {
+				clearTimeout(renderTimeout);
+				renderTimeout = null;
+			}
+
 			contentEl.removeClass("thinking");
 			contentEl.removeClass("placeholder");
 			isPlaceholder = false;
