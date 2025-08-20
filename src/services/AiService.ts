@@ -67,12 +67,19 @@ export class AiService {
 				  }`
 				: `\n\nIMPORTANT: Answer based on provided context and attached files. You do NOT have access to tools in this mode. Be helpful within the appropriate scope.`;
 
+		const codeFormattingInstruction = `\n\nCODE FORMATTING REQUIREMENT:
+- ALWAYS wrap code snippets in fenced code blocks with language specification
+- Use format: \`\`\`language-name for proper syntax highlighting
+- Examples: \`\`\`typescript, \`\`\`javascript, \`\`\`python, \`\`\`bash, \`\`\`json, etc.
+- Also try to indentify react components and mark those with \`\`\`tsx or \`\`\`jsx depending on if it has types or not.
+- Never output raw code without proper fencing and language tags`;
+
 		const baseInstructions =
 			mode === "compose"
-				? `You are a helpful assistant with access to both internal Obsidian team docs and external MCP tools. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools (list_docs, search_docs, read_doc, etc.) are ONLY for team documentation within (${teamRoot}). For external content, web searches, broader file operations, or enhanced capabilities, use MCP tools. Be concise and cite appropriately. Respond in the user's language unless translating.`
+				? `You are a helpful assistant with access to both internal Obsidian team docs and external MCP tools. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools (list_docs, search_docs, read_doc, etc.) are ONLY for team documentation within (${teamRoot}). For external content, web searches, broader file operations, or enhanced capabilities, use MCP tools. Be concise and cite appropriately. Respond in the user's language unless translating.${codeFormattingInstruction}`
 				: mode === "write"
-				? `You help with document editing using the most appropriate tools available. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools are ONLY for team docs within (${teamRoot}). For external files, code files, or broader editing capabilities, use MCP tools. Always read content first, then use appropriate edit/create tools with full content. After tools, provide brief summary only.`
-				: `You are a helpful assistant with knowledge of internal team docs within (${teamRoot}) and external capabilities through MCP tools. Answer based on context and use the most appropriate tools when available. Be concise and cite appropriately.`;
+				? `You help with document editing using the most appropriate tools available. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools are ONLY for team docs within (${teamRoot}). For external files, code files, or broader editing capabilities, use MCP tools. Always read content first, then use appropriate edit/create tools with full content. After tools, provide brief summary only.${codeFormattingInstruction}`
+				: `You are a helpful assistant with knowledge of internal team docs within (${teamRoot}) and external capabilities through MCP tools. Answer based on context and use the most appropriate tools when available. Be concise and cite appropriately.${codeFormattingInstruction}`;
 
 		return workflowEnhancements + "\n\n" + baseInstructions;
 	}
@@ -422,7 +429,9 @@ Tool outputs: ${toolContext}`;
 								const sanitizedToolName = tool.name
 									.replace(/[^a-zA-Z0-9_.-]/g, "_")
 									.replace(/-/g, "_");
-								return `- ${sanitizedClientName}_${sanitizedToolName}: ${tool.description || "No description"}`;
+								return `- ${sanitizedClientName}_${sanitizedToolName}: ${
+									tool.description || "No description"
+								}`;
 							});
 						})
 						.join("\n");
