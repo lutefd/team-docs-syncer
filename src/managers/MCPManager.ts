@@ -4,8 +4,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type TeamDocsPlugin from "../../main";
 import { MCPClientConfig, MCP_TRANSPORT_TYPE } from "../types/Settings";
+import { OAuthManager } from "./OAuthManager";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { Notice } from "obsidian";
 
 const execAsync = promisify(exec);
 
@@ -29,17 +31,22 @@ interface MCPClientInstance {
 export class MCPManager {
 	private plugin: TeamDocsPlugin;
 	private clients: Map<string, MCPClientInstance> = new Map();
-	private connectionAttempts: Map<string, number> = new Map();
-	private toolsCache: Map<string, { tools: any[]; timestamp: number }> =
-		new Map();
+	private clientConfigs: Map<string, MCPClientConfig> = new Map();
+	private retryAttempts: Map<string, number> = new Map();
+	private shownPermissionNotices: Set<string> = new Set();
+	private oauthManager: OAuthManager;
 	private readonly maxRetries = 3;
 	private readonly retryDelay = 1000;
 	private readonly cacheTimeout = 30000;
 	private reconnectionTimers: Map<string, NodeJS.Timeout> = new Map();
 	private readonly reconnectionDelay = 5000;
+	private connectionAttempts: Map<string, number> = new Map();
+	private toolsCache: Map<string, { tools: any[]; timestamp: number }> =
+		new Map();
 
 	constructor(plugin: TeamDocsPlugin) {
 		this.plugin = plugin;
+		this.oauthManager = new OAuthManager();
 	}
 
 	/**
@@ -69,6 +76,18 @@ export class MCPManager {
 	private async resolveCommandPath(command: string): Promise<string> {
 		if (command.startsWith("/")) {
 			return command;
+		}
+
+		if (command === "npx") {
+			const nodePath = await this.resolveCommandPath("node");
+			const npxPath = nodePath.replace("/node", "/npx");
+
+			try {
+				const fs = require("fs");
+				if (fs.existsSync(npxPath)) {
+					return npxPath;
+				}
+			} catch (e) {}
 		}
 
 		if (command === "node") {
@@ -204,18 +223,34 @@ export class MCPManager {
 		const { spawn } = require("child_process");
 
 		const args = config.transport.args ? config.transport.args.split(" ") : [];
+
+		const commandDir = command.includes("/")
+			? command.substring(0, command.lastIndexOf("/"))
+			: "";
+		const enhancedPath = commandDir
+			? `${commandDir}:${process.env.PATH}`
+			: process.env.PATH;
+
 		const child = spawn(command, args, {
 			stdio: ["pipe", "pipe", "pipe"],
 			env: {
 				...process.env,
+				PATH: enhancedPath,
 				NODE_ENV: "production",
 				DEBUG: "",
 				VERBOSE: "",
 			},
 		});
 
+		let allStdoutOutput = "";
+		let allStderrOutput = "";
+
 		child.stderr.on("data", (data: Buffer) => {
-			console.debug(`MCP ${config.name} stderr:`, data.toString());
+			const output = data.toString();
+			allStderrOutput += output;
+
+			this.handleOAuthDetection(config, output);
+			this.handlePermissionError(config, output);
 		});
 
 		let messageBuffer = "";
@@ -224,7 +259,10 @@ export class MCPManager {
 
 		child.stdout.on("data", (data: Buffer) => {
 			const chunk = data.toString();
+			allStdoutOutput += chunk;
 			messageBuffer += chunk;
+
+			this.handleOAuthDetection(config, chunk);
 
 			this.extractJsonRpcMessages(messageBuffer, messageQueue);
 
@@ -275,12 +313,16 @@ export class MCPManager {
 		});
 
 		child.on("error", (error: Error) => {
+			this.handleOAuthDetection(config, allStdoutOutput + allStderrOutput);
+
 			if (transport.onerror) {
 				transport.onerror(error);
 			}
 		});
 
 		child.on("close", (code: number) => {
+			this.handleOAuthDetection(config, allStdoutOutput + allStderrOutput);
+
 			if (transport.onclose) {
 				transport.onclose();
 			}
@@ -365,6 +407,135 @@ export class MCPManager {
 			typeof obj.result !== "undefined" ||
 			typeof obj.error !== "undefined"
 		);
+	}
+
+	/**
+	 * Handle OAuth detection from MCP server output
+	 */
+	private async handleOAuthDetection(
+		config: MCPClientConfig,
+		output: string
+	): Promise<void> {
+		const oauthInfo = this.oauthManager.detectOAuthFromOutput(output);
+
+		if (oauthInfo.requiresAuth) {
+			if (oauthInfo.authUrl) {
+				if (!this.oauthManager.hasActiveFlow(config.id)) {
+					try {
+						await this.oauthManager.startOAuthFlow(
+							config.id,
+							oauthInfo.authUrl,
+							oauthInfo.callbackPort,
+							oauthInfo.state
+						);
+					} catch (error) {
+						console.error(
+							`Failed to start OAuth flow for ${config.name}:`,
+							error
+						);
+					}
+				} else {
+					console.warn(`OAuth flow already active for ${config.name}`);
+				}
+			} else {
+				console.warn(
+					`OAuth required for ${config.name} but no authorization URL found. Output:`,
+					output.substring(0, 500)
+				);
+			}
+		}
+	}
+
+	/**
+	 * Handle permission/access errors in MCP server output
+	 */
+	private handlePermissionError(config: MCPClientConfig, output: string): void {
+		const accessDeniedPattern =
+			/Error POSTing to endpoint \(HTTP 403\):\s*(.+?)(?:\n|$)/i;
+		const linkPattern = /Link:\s*(https?:\/\/[^\s]+)/i;
+		const descriptionPattern = /Description:\s*(.+?)(?:\n|$)/i;
+
+		const accessMatch = output.match(accessDeniedPattern);
+		if (accessMatch) {
+			const errorMessage = accessMatch[1];
+			const linkMatch = output.match(linkPattern);
+			const descriptionMatch = output.match(descriptionPattern);
+
+			const noticeKey = `${config.name}:${
+				linkMatch ? linkMatch[1] : errorMessage
+			}`;
+
+			if (this.shownPermissionNotices.has(noticeKey)) {
+				return;
+			}
+
+			this.shownPermissionNotices.add(noticeKey);
+
+			const notice = {
+				title: `Access Permission Required - ${config.name}`,
+				message: errorMessage,
+				requestUrl: linkMatch ? linkMatch[1] : null,
+				description: descriptionMatch ? descriptionMatch[1] : null,
+				timestamp: new Date().toISOString(),
+				clientName: config.name,
+			};
+
+			this.showPermissionNotice(notice);
+		}
+	}
+
+	/**
+	 * Show a permission notice to the user
+	 */
+	private showPermissionNotice(notice: {
+		title: string;
+		message: string;
+		requestUrl: string | null;
+		description: string | null;
+		timestamp: string;
+		clientName: string;
+	}): void {
+		let noticeText = `${notice.title}\n\n${notice.message}`;
+
+		if (notice.description) {
+			noticeText += `\n\nDescription: ${notice.description}`;
+		}
+
+		if (notice.requestUrl) {
+			navigator.clipboard
+				.writeText(notice.requestUrl)
+				.then(() => {
+					console.log(`Copied access URL to clipboard: ${notice.requestUrl}`);
+				})
+				.catch((err) => {
+					console.warn("Failed to copy URL to clipboard:", err);
+				});
+
+			noticeText += `\n\nAccess URL copied to clipboard.\nClick here to open: ${notice.requestUrl}`;
+		}
+
+		const noticeEl = new Notice(noticeText, 10000);
+
+		if (notice.requestUrl) {
+			const noticeContainer = noticeEl.noticeEl;
+			noticeContainer.style.cursor = "pointer";
+
+			const urlRegex = new RegExp(
+				notice.requestUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+				"g"
+			);
+			noticeContainer.innerHTML = noticeContainer.innerHTML.replace(
+				urlRegex,
+				`<span style="color: #0066cc; text-decoration: underline;">${notice.requestUrl}</span>`
+			);
+
+			noticeContainer.addEventListener("click", (e) => {
+				e.preventDefault();
+				window.open(notice.requestUrl!, "_blank");
+			});
+		}
+
+		console.warn(`Permission error for ${notice.clientName}:`, notice);
 	}
 
 	/**
@@ -864,6 +1035,46 @@ export class MCPManager {
 	}
 
 	/**
+	 * Get OAuth status for all clients
+	 */
+	getOAuthStatus(): Array<{
+		clientId: string;
+		clientName: string;
+		hasActiveFlow: boolean;
+		authUrl?: string;
+		timestamp?: number;
+	}> {
+		const activeFlows = this.oauthManager.getActiveFlows();
+		const result: Array<{
+			clientId: string;
+			clientName: string;
+			hasActiveFlow: boolean;
+			authUrl?: string;
+			timestamp?: number;
+		}> = [];
+
+		for (const client of this.clients.values()) {
+			const flow = activeFlows.find((f) => f.clientId === client.id);
+			result.push({
+				clientId: client.id,
+				clientName: client.name,
+				hasActiveFlow: !!flow,
+				authUrl: flow?.authUrl,
+				timestamp: flow?.timestamp,
+			});
+		}
+
+		return result;
+	}
+
+	/**
+	 * Complete OAuth flow for a client
+	 */
+	completeOAuthFlow(clientId: string): void {
+		this.oauthManager.completeFlow(clientId);
+	}
+
+	/**
 	 * Shutdown all clients
 	 */
 	async shutdown(): Promise<void> {
@@ -871,6 +1082,8 @@ export class MCPManager {
 			clearTimeout(timer);
 		}
 		this.reconnectionTimers.clear();
+
+		this.oauthManager.shutdown();
 
 		const disconnectPromises = Array.from(this.clients.keys()).map((clientId) =>
 			this.disconnectClient(clientId)
