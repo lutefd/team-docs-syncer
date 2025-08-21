@@ -1,5 +1,6 @@
 import { App, TFile } from "obsidian";
 import TeamDocsPlugin from "../../main";
+import { PathUtils } from "src/utils/PathUtils";
 
 export interface DocMeta {
 	path: string;
@@ -21,7 +22,10 @@ export class MarkdownIndexService {
 			this.app.vault.on("modify", (file) => {
 				if (
 					file instanceof TFile &&
-					this.isUnderTeamDocs(file) &&
+					PathUtils.isWithinAiScope(
+						file.path,
+						this.plugin.settings.teamDocsPath
+					) &&
 					file.extension === "md"
 				) {
 					void this.updateFile(file);
@@ -32,7 +36,10 @@ export class MarkdownIndexService {
 			this.app.vault.on("create", (file) => {
 				if (
 					file instanceof TFile &&
-					this.isUnderTeamDocs(file) &&
+					PathUtils.isWithinAiScope(
+						file.path,
+						this.plugin.settings.teamDocsPath
+					) &&
 					file.extension === "md"
 				) {
 					void this.updateFile(file);
@@ -41,7 +48,13 @@ export class MarkdownIndexService {
 		);
 		this.plugin.registerEvent(
 			this.app.vault.on("delete", (file) => {
-				if (file instanceof TFile && this.isUnderTeamDocs(file)) {
+				if (
+					file instanceof TFile &&
+					PathUtils.isWithinAiScope(
+						file.path,
+						this.plugin.settings.teamDocsPath
+					)
+				) {
 					this.index.delete(file.path);
 				}
 			})
@@ -49,17 +62,12 @@ export class MarkdownIndexService {
 		this.initialized = true;
 	}
 
-	private isUnderTeamDocs(file: TFile): boolean {
-		const root = this.plugin.settings.teamDocsPath;
-		return !!root && file.path.startsWith(root + "/");
-	}
-
 	async rebuildIndex(): Promise<void> {
 		this.index.clear();
 		const mdFiles = this.app.vault.getMarkdownFiles();
 		const root = this.plugin.settings.teamDocsPath;
 		for (const f of mdFiles) {
-			if (!root || !f.path.startsWith(root + "/")) continue;
+			if (!PathUtils.isWithinAiScope(f.path, root)) continue;
 			await this.updateFile(f);
 		}
 	}
