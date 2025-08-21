@@ -1,12 +1,16 @@
 import TeamDocsPlugin from "../../main";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText, type ModelMessage } from "ai";
-import { buildTools } from "../tools/AiTools";
+import { buildTools } from "../tools";
 import { AiProviderFactory } from "./AiProviderFactory";
 import { AiProvider } from "../types/AiProvider";
-import { MCPSelection } from "../ui/MCPChooser";
-
-export type Mode = "compose" | "write" | "chat";
+import { MCPSelection } from "../ui/components/MCPChooser";
+import {
+	buildSystemPrompt,
+	type Mode,
+	type MCPToolInfo,
+} from "../instructions";
+import { PathUtils } from "src/utils/PathUtils";
 
 export interface ChatResult {
 	text: string;
@@ -38,50 +42,6 @@ export class AiService {
 		}
 		const factory = new AiProviderFactory(this.plugin.settings);
 		return factory.createModel(provider, modelId);
-	}
-
-	private buildSystemPrompt(mode: Mode, isOllama: boolean, teamRoot: string) {
-		const workflowEnhancements =
-			mode === "compose" || mode === "write"
-				? `\n\nIMPORTANT WORKFLOW (PRIORITIZE MCP TOOLS):
-- FIRST: Evaluate if MCP tools provide better functionality for the task (external files, web content, broader capabilities)
-- IF MCP tools are better suited: Use MCP tools instead of internal Obsidian tools
-- IF working with internal team docs: Use Obsidian tools (list_docs, search_docs, read_doc, etc.)
-- Internal Obsidian tools are ONLY for team documentation within the configured sync folder
-- For external searches, file operations, web content, or broader functionality: PREFER MCP tools
-- ALWAYS start by using appropriate tools to browse/search (MCP tools for external, Obsidian tools for team docs)
-- ALWAYS read content before answering questions about specific files or making edits
-- If results lack context, use appropriate tools for details or connections
-- For edits: read first, then use appropriate edit tool with COMPLETE updated content
-- For new files: use appropriate create tool with COMPLETE content
-- NEVER guess file contents—always read first
-- Wrap your thinking in <think> tags for reasoning steps, then provide your final answer in <finalAnswer> tags
-- After tools, provide ONLY a brief summary—reference files appropriately
-- Do NOT include file content in responses; tools handle operations${
-						isOllama
-							? `\n\nOLLAMA-SPECIFIC (MANDATORY):
-- Tool usage is REQUIRED—do not answer from memory.
-- Sequence: list_docs/search_docs/search_tags → read_doc → follow_links/get_backlinks/get_graph_context (if needed) → (propose_edit or create_doc if needed) → answer.
-- EXECUTE tools when requested—do not describe them.`
-							: ""
-				  }`
-				: `\n\nIMPORTANT: Answer based on provided context and attached files. You do NOT have access to tools in this mode. Be helpful within the appropriate scope.`;
-
-		const codeFormattingInstruction = `\n\nCODE FORMATTING REQUIREMENT:
-- ALWAYS wrap code snippets in fenced code blocks with language specification
-- Use format: \`\`\`language-name for proper syntax highlighting
-- Examples: \`\`\`typescript, \`\`\`javascript, \`\`\`python, \`\`\`bash, \`\`\`json, etc.
-- Also try to indentify react components and mark those with \`\`\`tsx or \`\`\`jsx depending on if it has types or not.
-- Never output raw code without proper fencing and language tags`;
-
-		const baseInstructions =
-			mode === "compose"
-				? `You are a helpful assistant with access to both internal Obsidian team docs and external MCP tools. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools (list_docs, search_docs, read_doc, etc.) are ONLY for team documentation within (${teamRoot}). For external content, web searches, broader file operations, or enhanced capabilities, use MCP tools. Be concise and cite appropriately. Respond in the user's language unless translating.${codeFormattingInstruction}`
-				: mode === "write"
-				? `You help with document editing using the most appropriate tools available. PRIORITIZE MCP tools when they provide better functionality for the task. Internal Obsidian tools are ONLY for team docs within (${teamRoot}). For external files, code files, or broader editing capabilities, use MCP tools. Always read content first, then use appropriate edit/create tools with full content. After tools, provide brief summary only.${codeFormattingInstruction}`
-				: `You are a helpful assistant with knowledge of internal team docs within (${teamRoot}) and external capabilities through MCP tools. Answer based on context and use the most appropriate tools when available. Be concise and cite appropriately.${codeFormattingInstruction}`;
-
-		return workflowEnhancements + "\n\n" + baseInstructions;
 	}
 
 	private processToolResults(
@@ -131,7 +91,10 @@ export class AiService {
 				if (r?.ok && r?.path && r?.content) {
 					proposals.push({ path: r.path, content: r.content });
 				}
-			} else if (tr.toolName === "create_doc") {
+			} else if (
+				tr.toolName === "create_doc" ||
+				tr.toolName === "create_base"
+			) {
 				const r = tr.output as {
 					path?: string;
 					content?: string;
@@ -142,6 +105,8 @@ export class AiService {
 						creations.push({ path: r.path, content: r.content });
 					}
 				}
+			} else if (tr.toolName === "search_base_def") {
+				sources.add("Obsidian Base Schema");
 			}
 		}
 	}
@@ -159,7 +124,9 @@ export class AiService {
 	): Promise<ChatResult> {
 		const model = this.getModel(provider, modelId);
 		const temperature = this.plugin.settings.openaiTemperature ?? 0.2;
-		const teamRoot = this.plugin.settings.teamDocsPath;
+		const scope = PathUtils.getAiScope();
+		const teamRoot =
+			scope === "team-docs" ? this.plugin.settings.teamDocsPath : "/";
 		const isOllama = provider === "ollama";
 		const tools =
 			mode === "compose" || mode === "write"
@@ -184,7 +151,7 @@ export class AiService {
 			temperature,
 			messages: [boundary, ...messages],
 			tools,
-			stopWhen: (options) => options.steps.length >= 10,
+			stopWhen: (options) => options.steps.length >= 15,
 			onStepFinish: (result) => {
 				if (result.toolResults?.length) {
 					this.processToolResults(
@@ -210,6 +177,8 @@ export class AiService {
 								search_tags: "🏷️ Searching tags...",
 								get_backlinks: "🔙 Getting backlinks...",
 								get_graph_context: "🌐 Building graph context...",
+								create_base: "📄 Creating base file...",
+								search_base_def: "📚 Retrieving base schema...",
 							};
 							return statusMap[toolName] || `🔧 Using ${toolName}...`;
 						})
@@ -368,9 +337,6 @@ Tool outputs: ${toolContext}`;
 		};
 	}
 
-	/**
-	 * Build combined tools from team docs tools and selected MCP clients
-	 */
 	private async buildCombinedTools(mcpSelection?: MCPSelection): Promise<any> {
 		const baseTools = buildTools(this.plugin);
 
@@ -399,50 +365,34 @@ Tool outputs: ${toolContext}`;
 		}
 	}
 
-	/**
-	 * Build system prompt with MCP capabilities
-	 */
 	private async buildSystemPromptWithMCP(
 		mode: Mode,
 		isOllama: boolean,
 		teamRoot: string,
 		mcpSelection?: MCPSelection
 	): Promise<string> {
-		let mcpToolsInfo = "";
+		let mcpTools: MCPToolInfo[] = [];
 
 		if (mcpSelection?.clientIds?.length) {
 			try {
 				const mcpToolsData = await this.plugin.mcpManager.listAllTools();
-				const selectedMcpTools = mcpToolsData.filter((client) =>
-					mcpSelection.clientIds.includes(client.clientId)
-				);
-
-				if (selectedMcpTools.length > 0) {
-					const toolsList = selectedMcpTools
-						.flatMap((client) => {
-							const tools = Array.isArray(client.tools) ? client.tools : [];
-							return tools.map((tool) => {
-								const sanitizedClientName = client.clientName.replace(
-									/[^a-zA-Z0-9_]/g,
-									"_"
-								);
-								const sanitizedToolName = tool.name
-									.replace(/[^a-zA-Z0-9_.-]/g, "_")
-									.replace(/-/g, "_");
-								return `- ${sanitizedClientName}_${sanitizedToolName}: ${
-									tool.description || "No description"
-								}`;
-							});
-						})
-						.join("\n");
-
-					mcpToolsInfo = `\n\nMCP TOOLS AVAILABLE (PRIORITIZE WHEN APPROPRIATE):\n${toolsList}\n\nCRITICAL: Use MCP tools when they provide better functionality than internal Obsidian tools. MCP tools are preferred for:\n- External file operations (outside team docs folder)\n- Web content and searches\n- Code files and broader programming tasks\n- Enhanced capabilities beyond basic markdown operations\n- Any task where MCP tools offer superior functionality\n\nInternal Obsidian tools should ONLY be used for team documentation within the configured sync folder.`;
-				}
+				mcpTools = mcpToolsData
+					.filter((client) => mcpSelection.clientIds.includes(client.clientId))
+					.map((client) => ({
+						clientId: client.clientId,
+						clientName: client.clientName,
+						tools: Array.isArray(client.tools) ? client.tools : [],
+					}));
 			} catch (error) {
 				console.error("Failed to get MCP tools info:", error);
 			}
 		}
 
-		return this.buildSystemPrompt(mode, isOllama, teamRoot) + mcpToolsInfo;
+		return buildSystemPrompt({
+			mode,
+			isOllama,
+			teamRoot,
+			mcpTools,
+		});
 	}
 }
