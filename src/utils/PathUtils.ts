@@ -1,3 +1,5 @@
+import TeamDocsPlugin from "main";
+
 /**
  * Utility functions for handling file paths in team docs syncing
  */
@@ -26,6 +28,17 @@ export class PathUtils {
 	 */
 	static getAiScope(): "team-docs" | "vault-wide" {
 		return PathUtils.scopeConfig.aiFeatures;
+	}
+
+	/**
+	 *  Gets Interactable Path depending on the scope
+	 */
+	static getInteractablePath(teamDocsPath: string): string {
+		const scope = PathUtils.getAiScope();
+		if (scope === "vault-wide") {
+			return "/";
+		}
+		return teamDocsPath;
 	}
 
 	/**
