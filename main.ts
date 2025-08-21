@@ -1,7 +1,7 @@
 import { Plugin } from "obsidian";
 import { TeamDocsSettings, DEFAULT_SETTINGS } from "./src/types/Settings";
 import { EditReservationManager } from "./src/managers/EditReservationManager";
-import { StatusIndicator } from "./src/ui/StatusIndicator";
+import { StatusIndicator } from "./src/ui/components/StatusIndicator";
 import { GitService } from "./src/services/GitService";
 import { FileHandler } from "./src/handlers/FileHandlers";
 import { CommandManager } from "./src/managers/CommandManager";
@@ -123,6 +123,10 @@ export default class TeamDocsPlugin extends Plugin {
 		this.setupAutoSync();
 
 		PathUtils.setAiScope(this.settings.aiScope);
+
+		if (this.markdownIndexService) {
+			await this.markdownIndexService.rebuildIndex();
+		}
 
 		if (this.mcpManager) {
 			await this.mcpManager.refreshClients();
