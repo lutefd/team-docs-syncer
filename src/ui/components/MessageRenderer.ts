@@ -327,10 +327,13 @@ export class MessageRenderer extends Component {
 			isPlaceholder = false;
 
 			if (currentContent) {
-				let processedContent = currentContent;
+				let processedContent =
+					finalAnswerContent && finalAnswerContent.trim()
+						? finalAnswerContent
+						: currentContent;
 
 				const thinkMatches = processedContent.match(
-					/<think>([\s\S]*?)<\/think>/g
+					/<think>[\s\S]*?<\/think>/g
 				);
 
 				if (thinkMatches) {
@@ -345,6 +348,8 @@ export class MessageRenderer extends Component {
 						""
 					);
 				}
+
+				processedContent = processedContent.replace(/<\/?finalAnswer>/g, "");
 
 				processedContent = processedContent.replace(
 					/<attachedcontent[^>]*>[\s\S]*?<\/attachedcontent>/g,
