@@ -1,20 +1,25 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile } from "obsidian";
 import TeamDocsPlugin from "../../main";
 import type { ModelMessage } from "ai";
-import { ChatSessionsModal } from "./ChatSessionsModal";
-import { DiffModal } from "./DiffModal";
-import { EditTargetModal } from "./EditTargetModal";
-import { ProviderSelection } from "./ProviderChooser";
-import { MCPSelection } from "./MCPChooser";
+import { ChatSessionsModal } from "./modals/ChatSessionsModal";
+import { DiffModal } from "./modals/DiffModal";
+import { EditTargetModal } from "./modals/EditTargetModal";
+import { ProviderSelection } from "./components/ProviderChooser";
+import { MCPSelection } from "./components/MCPChooser";
 import { MessageRenderer } from "./components/MessageRenderer";
 import { ChatInput } from "./components/ChatInput";
 import { LinkHandler } from "./components/LinkHandler";
 import { SessionManager } from "../managers/SessionManager";
 import { FileContentExtractor } from "../utils/FileContentExtractor";
+import {
+	buildComposeSystemPrompt,
+	buildEditSystemPrompt,
+	buildContextualPrompt,
+	buildEditContextPrompt,
+	Mode,
+} from "../instructions";
 
 export const CHATBOT_VIEW = "team-docs-chatbot";
-
-type Mode = "compose" | "write" | "chat";
 
 export class ChatbotView extends ItemView {
 	private plugin: TeamDocsPlugin;
@@ -310,64 +315,24 @@ export class ChatbotView extends ItemView {
 		const candidates =
 			this.plugin.markdownIndexService?.search(searchText, 5) || [];
 
+		const systemContent = buildComposeSystemPrompt({
+			providerSelection,
+			pinnedFiles: pinned,
+		});
+
 		const system: ModelMessage = {
 			role: "system",
-			content: `CRITICAL WORKFLOW (TOOLS FIRST):
-1. Check for <attachedcontent> in user message.
-2. If attachedcontent exists: Use it directly—SKIP read_doc for those files.
-3. ALWAYS use list_docs/search_docs/search_tags to find relevant documents.
-4. Use get_backlinks/get_graph_context/follow_links for references and connections if needed.
-5. Use read_doc ONLY for non-attached files if needed.
-6. For changes: ALWAYS use propose_edit/create_doc with COMPLETE content—NEVER output content/JSON directly.
-7. After tools: Provide brief natural language summary only.
-
-ATTACHED CONTENT RULES:
-- Skip read_doc for attached files—use provided content.
-- Still search_docs/search_tags/list_docs for related files.
-- Still follow_links/get_backlinks/get_graph_context if attached content references others.
-
-TOOL USAGE RULES:
-- NEVER output structured data or file content.
-- Cite with [[path/to/file.md|filename]].
-- Be concise and accurate.${
-				providerSelection.provider === "ollama"
-					? `
-OLLAMA-SPECIFIC (MANDATORY):
-- MUST use propose_edit/create_doc for edits/creations.
-- EXECUTE tools immediately—do not describe or ask confirmation.
-- Tool execution is REQUIRED—do not stop early.`
-					: ""
-			}${
-				providerSelection.modelId?.toLowerCase().includes("mistral")
-					? `
-MISTRAL-SPECIFIC:
-- ALWAYS use <think> for reasoning/planning.
-- End thinking with </think> before actions.
-- Execute tools after thinking; final response is brief summary.`
-					: ""
-			}
-
-${
-	pinned.length > 0
-		? "Prioritize pinned files, but search for more."
-		: "Use search_docs for all relevant files."
-} If snippets insufficient, use read_doc. Respond in user's language unless translating.`,
+			content: systemContent,
 		};
 
-		const contextBlurb = candidates
-			.map(
-				(m, i) =>
-					`#${i + 1} ${m.path}\nTitle: ${
-						m.title
-					}\nFrontmatter: ${JSON.stringify(m.frontmatter || {})}`
-			)
-			.join("\n\n");
+		const assistantPrepContent = buildContextualPrompt({
+			candidates,
+			pinnedFiles: pinned,
+		});
 
 		const assistantPrep: ModelMessage = {
 			role: "system",
-			content: `Relevant files:\n\n${contextBlurb}\n\nPinned:\n${pinned
-				.map((p, i) => `#${i + 1} ${p}`)
-				.join("\n")}`,
+			content: assistantPrepContent,
 		};
 
 		const msgList = [system, assistantPrep, ...session.messages];
@@ -481,32 +446,21 @@ ${
 			return;
 		}
 
+		const editSystemContent = buildEditSystemPrompt({
+			filePath: path,
+			providerSelection,
+		});
+
 		const editSystem: ModelMessage = {
 			role: "system",
-			content: `CRITICAL WORKFLOW (TOOLS FIRST) for editing ${path}:
-1. ALWAYS use list_docs/search_docs/search_tags to find relevant files if needed.
-2. Use follow_links/get_backlinks/get_graph_context for additional context/connections.
-3. ALWAYS use read_doc to get current content.
-4. Then use propose_edit with COMPLETE updated content.
-5. NEVER output content directly—use propose_edit.
-6. After tool: Provide brief summary only.
-
-TOOL USAGE RULES:
-- Maintain existing structure/style unless requested.
-- Cite with [[path/to/file.md|filename]].${
-				providerSelection.modelId?.toLowerCase().includes("mistral")
-					? `
-MISTRAL-SPECIFIC:
-- ALWAYS use <think> for reasoning.
-- End with </think> before actions.
-- Execute tools after thinking; final response is summary.`
-					: ""
-			}`,
+			content: editSystemContent,
 		};
+
+		const fileContextContent = buildEditContextPrompt(path);
 
 		const fileContext: ModelMessage = {
 			role: "user",
-			content: `Edit ${path}: Apply requested changes, keeping structure/style intact unless specified.`,
+			content: fileContextContent,
 		};
 
 		const streamingMessage = this.createStreamingMessage();
