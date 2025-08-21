@@ -7,7 +7,7 @@ import {
 	TFolder,
 	Notice,
 } from "obsidian";
-import TeamDocsPlugin from "../../main";
+import TeamDocsPlugin from "../../../main";
 
 export class EditTargetModal extends Modal {
 	private selectedPath: string | null = null;

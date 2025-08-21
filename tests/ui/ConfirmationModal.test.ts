@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { App } from "obsidian";
-import { ConfirmationModal } from "../../src/ui/ConfirmationModal";
+import { ConfirmationModal } from "../../src/ui/modals/ConfirmationModal";
 import { createMockApp } from "../helpers/mockPlugin";
 
 describe("ConfirmationModal", () => {

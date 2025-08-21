@@ -1,6 +1,6 @@
 import { App, Component } from "obsidian";
-import TeamDocsPlugin from "../../main";
-import { EditReservation } from "../managers/EditReservationManager";
+import TeamDocsPlugin from "../../../main";
+import { EditReservation } from "../../managers/EditReservationManager";
 
 /**
  * Represents the current synchronization status

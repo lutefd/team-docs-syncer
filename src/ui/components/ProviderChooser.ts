@@ -1,7 +1,7 @@
 import { Component } from "obsidian";
-import { AiProvider } from "../types/AiProvider";
-import { AiProviderFactory } from "../services/AiProviderFactory";
-import { TeamDocsSettings } from "../types/Settings";
+import { AiProvider } from "../../types/AiProvider";
+import { AiProviderFactory } from "../../services/AiProviderFactory";
+import { TeamDocsSettings } from "../../types/Settings";
 
 export interface ProviderSelection {
 	provider: AiProvider;

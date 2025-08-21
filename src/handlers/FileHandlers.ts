@@ -9,7 +9,7 @@ import {
 } from "obsidian";
 import * as path from "path";
 import TeamDocsPlugin from "../../main";
-import { ConfirmationModal } from "../ui/ConfirmationModal";
+import { ConfirmationModal } from "../ui/modals/ConfirmationModal";
 import { PathUtils } from "../utils/PathUtils";
 
 /**
@@ -45,7 +45,12 @@ export class FileHandler {
 
 		this.plugin.registerEvent(
 			this.app.vault.on("delete", (file) => {
-				if (PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)) {
+				if (
+					PathUtils.isWithinTeamDocs(
+						file.path,
+						this.plugin.settings.teamDocsPath
+					)
+				) {
 					this.onFileDeleted(file);
 				}
 			})
@@ -74,7 +79,10 @@ export class FileHandler {
 	 * Handles file modification events
 	 */
 	private async onFileModified(file: TFile) {
-		if (!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)) return;
+		if (
+			!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)
+		)
+			return;
 
 		if (this.processingFiles.has(file.path)) {
 			return;
@@ -162,7 +170,8 @@ export class FileHandler {
 		if (!teamRoot) return;
 
 		const activeFile = this.app.workspace.getActiveFile();
-		if (!activeFile || !PathUtils.isWithinTeamDocs(activeFile.path, teamRoot)) return;
+		if (!activeFile || !PathUtils.isWithinTeamDocs(activeFile.path, teamRoot))
+			return;
 
 		const attachmentsSubdir = this.plugin.settings.attachmentsSubdir || "";
 		if (!attachmentsSubdir || !attachmentsSubdir.trim()) return;
@@ -276,7 +285,10 @@ export class FileHandler {
 	 */
 	private onEditorChange(editor: Editor, info: MarkdownView) {
 		const file = info.file;
-		if (!file || !PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath))
+		if (
+			!file ||
+			!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)
+		)
 			return;
 
 		if (this.warnedFiles.has(file.path)) return;
@@ -332,9 +344,12 @@ export class FileHandler {
 				return;
 			}
 
-			const relativePath = PathUtils.toRelativePath(file.path, this.plugin.settings.teamDocsPath);
+			const relativePath = PathUtils.toRelativePath(
+				file.path,
+				this.plugin.settings.teamDocsPath
+			);
 			if (!relativePath) {
-				console.error('File not within team docs path:', file.path);
+				console.error("File not within team docs path:", file.path);
 				return;
 			}
 

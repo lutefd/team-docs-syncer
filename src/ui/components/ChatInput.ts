@@ -3,7 +3,7 @@ import TeamDocsPlugin from "../../../main";
 import { MentionHandler } from "./MentionHandler";
 import { LinkHandler } from "./LinkHandler";
 import { MCPModal, MCPSelection } from "./MCPModal";
-import { ProviderChooser, ProviderSelection } from "../ProviderChooser";
+import { ProviderChooser, ProviderSelection } from "./ProviderChooser";
 
 export interface ChatInputOptions {
 	onSend?: (

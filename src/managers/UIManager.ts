@@ -2,7 +2,7 @@ import { App, Notice, TFile, MarkdownView } from "obsidian";
 import TeamDocsPlugin from "../../main";
 import { ACTIVITY_FEED_VIEW } from "../ui/TeamActivityFeed";
 import { CHATBOT_VIEW } from "../ui/ChatbotView";
-import { ConfirmationModal } from "../ui/ConfirmationModal";
+import { ConfirmationModal } from "../ui/modals/ConfirmationModal";
 import { PathUtils } from "../utils/PathUtils";
 
 /**
@@ -58,7 +58,9 @@ export class UIManager {
 	 * Updates the file reservation indicator in the UI
 	 */
 	updateFileReservationUI(file: TFile) {
-		if (!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)) {
+		if (
+			!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)
+		) {
 			return;
 		}
 

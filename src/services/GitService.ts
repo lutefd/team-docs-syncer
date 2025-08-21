@@ -3,8 +3,8 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
 import TeamDocsPlugin from "../../main";
-import { ConflictResolutionModal } from "../ui/ConflictResolutionModal";
-import { LocalChangesModal } from "../ui/LocalChangesModal";
+import { ConflictResolutionModal } from "../ui/modals/ConflictResolutionModal";
+import { LocalChangesModal } from "../ui/modals/LocalChangesModal";
 
 const execAsync = promisify(exec);
 

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { App } from "obsidian";
-import { ConflictResolutionModal } from "../../src/ui/ConflictResolutionModal";
+import { ConflictResolutionModal } from "../../src/ui/modals/ConflictResolutionModal";
 import { createMockApp } from "../helpers/mockPlugin";
 
 describe("ConflictResolutionModal", () => {

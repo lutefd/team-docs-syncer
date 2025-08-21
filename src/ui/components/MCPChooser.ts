@@ -1,7 +1,7 @@
 import { Component } from "obsidian";
-import { MCPClientConfig } from "../types/Settings";
-import { MCPManager } from "../managers/MCPManager";
-import TeamDocsPlugin from "../../main";
+import { MCPClientConfig } from "../../types/Settings";
+import { MCPManager } from "../../managers/MCPManager";
+import TeamDocsPlugin from "../../../main";
 
 export interface MCPSelection {
 	clientIds: string[];

@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import { App } from "obsidian";
-import { StatusIndicator } from "../../src/ui/StatusIndicator";
+import { StatusIndicator } from "../../src/ui/components/StatusIndicator";
 import { createMockApp, createMockPlugin } from "../helpers/mockPlugin";
 
 describe("StatusIndicator", () => {

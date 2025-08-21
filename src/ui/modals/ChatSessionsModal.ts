@@ -1,5 +1,5 @@
 import { App, Modal, Setting } from "obsidian";
-import TeamDocsPlugin from "../../main";
+import TeamDocsPlugin from "../../../main";
 
 export class ChatSessionsModal extends Modal {
 	constructor(
