@@ -143,7 +143,7 @@ export default class TeamDocsPlugin extends Plugin {
 
 		this.aiService = new AiService(this);
 		this.markdownIndexService = new MarkdownIndexService(this.app, this);
-		this.chatSessionService = new ChatSessionService();
+		this.chatSessionService = new ChatSessionService(this);
 		this.mcpManager = new MCPManager(this);
 
 		this.addChild(this.reservationManager);
