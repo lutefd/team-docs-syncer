@@ -45,6 +45,9 @@ export class EditReservationManager extends Component {
 	 * Reserves a file for editing if not already reserved by another user
 	 */
 	async reserveFile(file: TFile): Promise<boolean> {
+		if ((this.plugin as any).installingWizard || (this.plugin as any).syncing) {
+			return false;
+		}
 		const filePath = file.path;
 
 		if (this.pendingOperations.has(filePath)) {
@@ -70,6 +73,9 @@ export class EditReservationManager extends Component {
 	 * Internal method to perform the actual reservation
 	 */
 	private async performReservation(file: TFile): Promise<boolean> {
+		if ((this.plugin as any).installingWizard || (this.plugin as any).syncing) {
+			return false;
+		}
 		const teamDocsPath = this.plugin.settings.teamDocsPath;
 		const relativePath = PathUtils.toRelativePath(file.path, teamDocsPath);
 
@@ -165,6 +171,9 @@ export class EditReservationManager extends Component {
 	 * Only extends if reservation is close to expiring and hasn't been extended recently
 	 */
 	async extendReservation(file: TFile): Promise<boolean> {
+		if ((this.plugin as any).installingWizard || (this.plugin as any).syncing) {
+			return false;
+		}
 		const teamDocsPath = this.plugin.settings.teamDocsPath;
 		const relativePath = PathUtils.toRelativePath(file.path, teamDocsPath);
 
@@ -354,6 +363,9 @@ export class EditReservationManager extends Component {
 	 * Syncs reservations from recent Git commit history
 	 */
 	async syncReservationsFromGit(): Promise<void> {
+		if ((this.plugin as any).installingWizard || (this.plugin as any).syncing) {
+			return;
+		}
 		try {
 			const teamDocsPath = await this.plugin.gitService.getTeamDocsPath();
 			if (!teamDocsPath) return;
