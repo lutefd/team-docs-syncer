@@ -292,6 +292,16 @@ export class ChatbotView extends ItemView {
 		streamingMessage: any,
 		session: any
 	) {
+		if (result?.reasoningSummary) {
+			try {
+				streamingMessage.addThinkingSection(result.reasoningSummary);
+			} catch (_) {}
+		}
+		if (result?.reasoningText) {
+			try {
+				streamingMessage.addThinkingSection("\n" + result.reasoningText + "\n");
+			} catch (_) {}
+		}
 		const finalText = streamingMessage.contentEl.textContent || result.text;
 		session.messages.push({ role: "assistant", content: finalText });
 		await streamingMessage.finalize();
