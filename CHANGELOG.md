@@ -309,6 +309,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Export stub properly to build (`chore: export stub properly to build`)
 
 [Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v2.0.0...HEAD
+[2.0.2]: https://github.com/lutefd/team-docs-syncer/releases/tag/v2.0.2
 [2.0.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v2.0.1
 [2.0.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v2.0.0
 [1.5.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.5.0

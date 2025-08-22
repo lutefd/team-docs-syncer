@@ -37,6 +37,8 @@ export default class TeamDocsPlugin extends Plugin {
 	chatSessionService: ChatSessionService;
 	mcpManager: MCPManager;
 	private syncInterval: ReturnType<typeof setInterval> | null = null;
+	public installingWizard: boolean = false;
+	public syncing: boolean = false;
 
 	async onload() {
 		await this.loadSettings();
@@ -52,6 +54,7 @@ export default class TeamDocsPlugin extends Plugin {
 		this.addSettingTab(new TeamDocsSettingTab(this.app, this));
 
 		if (await this.needsFirstTimeSetup()) {
+			this.installingWizard = true;
 			setTimeout(() => new InstallWizard(this.app, this).open(), 500);
 		} else {
 			if (this.settings.autoSyncOnStartup) {
