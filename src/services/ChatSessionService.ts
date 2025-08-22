@@ -1,6 +1,6 @@
 import type { ModelMessage } from "ai";
 import type TeamDocsPlugin from "../../main";
-import { ContextStorage } from "./ContextStorage";
+import { ContextStorage } from "./ContextStorageService";
 
 export interface ChatSession {
 	id: string;
