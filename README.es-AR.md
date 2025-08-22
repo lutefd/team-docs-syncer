@@ -140,9 +140,9 @@ Abrir la pestaña de configuración del plugin en Obsidian:
 
 ### Configuración del Proveedor de IA
 
-- **OpenAI** — Clave de API para modelos GPT (GPT-4o, GPT-4o-mini, o1-preview, o1-mini, etc.).
-- **Anthropic** — Clave de API para modelos Claude (Claude 3.5 Sonnet, Claude 3.5 Haiku, etc.).
-- **Google** — Clave de API para modelos Gemini (Gemini 2.0 Flash, Gemini 1.5 Pro, etc.).
+- **OpenAI** — Clave de API para modelos GPT.
+- **Anthropic** — Clave de API para modelos Claude.
+- **Google** — Clave de API para modelos Gemini.
 - **Ollama** — URL base y lista de modelos para modelos de IA locales.
 - **Configuraciones Avanzadas** — Temperatura, tokens máximos y otros parámetros.
 
@@ -212,9 +212,9 @@ El asistente de IA ofrece tres modos especializados:
 
 ### Proveedores de IA Soportados
 
-- **OpenAI** — Todos los modelos basados en texto incluyendo o1-preview con razonamiento nativo.
-- **Anthropic** — Todos los modelos Claude con capacidades de razonamiento mejoradas.
-- **Google** — Todos los modelos Gemini con soporte para contexto largo.
+- **OpenAI** — Todos los modelos basados en texto.
+- **Anthropic** — Todos los modelos Claude.
+- **Google** — Todos los modelos Gemini.
 - **Ollama** — Modelos locales como Llama, Gemma y ajustes finos personalizados.
 
 ---

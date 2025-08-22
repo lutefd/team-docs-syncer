@@ -140,11 +140,11 @@ Open the plugin's settings tab in Obsidian:
 
 ### AI Provider Settings
 
-- **OpenAI** — API key for GPT models (GPT-4o, GPT-4o-mini, o1-preview, o1-mini, etc.).
-- **Anthropic** — API key for Claude models (Claude 3.5 Sonnet, Claude 3.5 Haiku, etc.).
-- **Google** — API key for Gemini models (Gemini 2.0 Flash, Gemini 1.5 Pro, etc.).
-- **Ollama** — Base URL and model list for local AI models.
-- **Advanced Settings** — Temperature, max tokens, and other parameters.
+- **OpenAI** — API key for GPT models
+- **Anthropic** — API key for Claude models
+- **Google** — API key for Gemini models
+- **Ollama** — Base URL and model list for local AI models
+- **Advanced Settings** — Temperature, max tokens, and other parameters
 
 ### MCP Server Settings
 
@@ -212,9 +212,9 @@ The AI assistant offers three specialized modes:
 
 ### Supported AI Providers
 
-- **OpenAI** — All text-based models including o1-preview with native reasoning.
-- **Anthropic** — All Claude models with enhanced reasoning capabilities.
-- **Google** — All Gemini models with long context support.
+- **OpenAI** — All text-based models.
+- **Anthropic** — All Claude models.
+- **Google** — All Gemini models.
 - **Ollama** — Local models like Llama, Gemma, and custom fine-tunes.
 
 ---
