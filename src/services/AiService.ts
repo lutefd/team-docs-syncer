@@ -11,6 +11,12 @@ import {
 	type MCPToolInfo,
 } from "../instructions";
 import { PathUtils } from "src/utils/PathUtils";
+import { ContextManager } from "../managers/ContextManager";
+import { ContextStorage } from "./ContextStorageService";
+import type { ContextPolicy } from "../types/Context";
+import { SummarizerService } from "./SummarizerService";
+import { PlanningService } from "./PlanningService";
+import { MemoryService } from "./MemoryService";
 
 export interface ChatResult {
 	text: string;
@@ -18,10 +24,23 @@ export interface ChatResult {
 	proposals?: Array<{ path: string; content: string }>;
 	creations?: Array<{ path: string; content: string }>;
 	thoughts?: string;
+	reasoningSummary?: string;
 }
 
 export class AiService {
-	constructor(private plugin: TeamDocsPlugin) {}
+	private contextManager: ContextManager;
+	private contextStorage: ContextStorage;
+	private summarizer: SummarizerService;
+	private planningService: PlanningService;
+	private memoryService: MemoryService;
+
+	constructor(private plugin: TeamDocsPlugin) {
+		this.contextManager = new ContextManager(plugin);
+		this.contextStorage = new ContextStorage(plugin);
+		this.summarizer = new SummarizerService(plugin);
+		this.planningService = new PlanningService(plugin);
+		this.memoryService = new MemoryService(plugin);
+	}
 
 	hasApiKey(provider?: AiProvider): boolean {
 		if (!provider) {
@@ -139,17 +158,110 @@ export class AiService {
 			teamRoot,
 			mcpSelection
 		);
-		const boundary: ModelMessage = { role: "system", content: systemPrompt };
+
+		const sessionId =
+			this.plugin.chatSessionService.getActive()?.id || "default";
+		const ctx: ContextPolicy = {
+			summarizeOverTokens:
+				this.plugin.settings.context?.summarizeOverTokens ?? 32000,
+			historyMaxMessages:
+				this.plugin.settings.context?.historyMaxMessages ?? 20,
+			retrieval: {
+				enableVault:
+					this.plugin.settings.context?.retrieval?.enableVault ?? true,
+				k: this.plugin.settings.context?.retrieval?.k ?? 5,
+				snippetLength:
+					this.plugin.settings.context?.retrieval?.snippetLength ?? 800,
+			},
+			includeMCPOverview:
+				this.plugin.settings.context?.includeMCPOverview ?? true,
+		};
+
+		const ctxRes = await this.contextManager.buildContext(
+			{
+				messages,
+				mode,
+				provider,
+				modelId,
+				aiScope: scope,
+				teamRoot,
+				mcpSelection,
+				sessionId,
+			},
+			ctx
+		);
+
+		const boundary: ModelMessage = {
+			role: "system",
+			content: `${systemPrompt}\n\n${ctxRes.systemAugment}`,
+		};
+
+		try {
+			const lastUser = messages.filter((m) => m.role === "user").pop();
+			const lastUserText =
+				typeof lastUser?.content === "string" ? lastUser.content : "";
+			await this.planningService.generatePlanIfUseful(
+				sessionId,
+				lastUserText,
+				model
+			);
+		} catch (e) {
+			console.warn("Auto-plan generation failed:", e);
+		}
+
+		if (ctxRes.metrics.summarized && ctxRes.summaryText) {
+			try {
+				await this.contextStorage.writeSummary(sessionId, ctxRes.summaryText);
+				this.plugin.chatSessionService.compactHistory(
+					sessionId,
+					ctxRes.summaryText,
+					ctx.historyMaxMessages
+				);
+				onStatus?.("🧰 Context compacted (provisional summary).");
+			} catch (e) {
+				console.warn("Failed to apply provisional summary:", e);
+			}
+		}
+
+		if (ctxRes.metrics.summarized) {
+			const olderForSummary = messages
+				.filter((m) => m.role !== "system")
+				.slice(0, Math.max(0, messages.length - ctx.historyMaxMessages));
+			void this.summarizer
+				.summarize(olderForSummary, {
+					provider,
+					modelId,
+					targetTokens: 500,
+				})
+				.then(async (summary) => {
+					if (!summary) return;
+					try {
+						await this.contextStorage.writeSummary(sessionId, summary);
+						this.plugin.chatSessionService.compactHistory(
+							sessionId,
+							summary,
+							ctx.historyMaxMessages
+						);
+						onStatus?.("🧰 Context compacted with refined summary.");
+					} catch (err) {
+						console.warn("Failed to apply refined summary:", err);
+					}
+				})
+				.catch(() => {});
+		}
 
 		const allToolResults: any[] = [];
 		const sources = new Set<string>();
 		const proposals: Array<{ path: string; content: string }> = [];
 		const creations: Array<{ path: string; content: string }> = [];
 
+		let lastStatusTime = 0;
+		let hasActiveToolStatus = false;
+
 		const res = streamText({
 			model,
 			temperature,
-			messages: [boundary, ...messages],
+			messages: [boundary, ...ctxRes.trimmedMessages],
 			tools,
 			stopWhen: (options) => options.steps.length >= 15,
 			onStepFinish: (result) => {
@@ -183,6 +295,7 @@ export class AiService {
 							return statusMap[toolName] || `🔧 Using ${toolName}...`;
 						})
 						.join(" ");
+					lastStatusTime = Date.now();
 					onStatus(statuses);
 				}
 
@@ -196,6 +309,7 @@ export class AiService {
 						const syncStatus = result.toolCalls
 							.map((tc) => `Executing ${tc.toolName}...`)
 							.join(" ");
+						lastStatusTime = Date.now();
 						onStatus(syncStatus);
 					}
 				}
@@ -209,13 +323,34 @@ export class AiService {
 		let hasStartedContent = false;
 		let lastChunkTime = Date.now();
 
+		(async () => {
+			try {
+				for await (const part of (res as any)
+					.fullStream as AsyncIterable<any>) {
+					if (part?.type === "reasoning" && typeof part.text === "string") {
+						inThinking = true;
+						lastChunkTime = Date.now();
+						lastStatusTime = Date.now();
+						if (onPlaceholder) onPlaceholder("💭 Thinking...");
+						thoughts += part.text;
+						if (onThoughts) onThoughts(part.text);
+					}
+					if (part?.type === "reasoning-part-finish") {
+						inThinking = false;
+					}
+				}
+			} catch (_) {}
+		})();
+
 		const checkForStall = () => {
 			const now = Date.now();
 			if (
 				!hasStartedContent &&
 				now - lastChunkTime > 1000 &&
 				onPlaceholder &&
-				!inThinking
+				!inThinking &&
+				now - lastStatusTime > 1000 &&
+				!hasActiveToolStatus
 			) {
 				onPlaceholder("💭 Processing...");
 			}
@@ -243,7 +378,6 @@ export class AiService {
 					inThinking = false;
 					hasStartedContent = true;
 					if (onStatus) onStatus("📝 Writing response...");
-					if (onPlaceholder) onPlaceholder("");
 					continue;
 				}
 				if (chunk.includes("</finalAnswer>")) {
@@ -291,6 +425,35 @@ export class AiService {
 			clearInterval(stallInterval);
 		}
 
+		let reasoningText: string | undefined = undefined;
+		try {
+			reasoningText = await (res as any)?.reasoningText;
+			if (reasoningText && typeof reasoningText === "string") {
+				reasoningText = reasoningText.trim();
+			}
+		} catch (_) {}
+
+		try {
+			const lastUser = messages.filter((m) => m.role === "user").pop();
+			await this.memoryService.extractAndStoreIfUseful(
+				sessionId,
+				typeof lastUser?.content === "string" ? lastUser.content : "",
+				text,
+				model,
+				proposals.length,
+				creations.length
+			);
+
+			await this.planningService.generateNextIfUseful(
+				sessionId,
+				typeof lastUser?.content === "string" ? lastUser.content : "",
+				text,
+				model
+			);
+		} catch (e) {
+			console.warn("Post-turn memory/next extraction failed:", e);
+		}
+
 		if (!text && allToolResults.length > 0) {
 			const toolContext = allToolResults
 				.map(
@@ -334,6 +497,7 @@ Tool outputs: ${toolContext}`;
 			proposals: proposals.length ? proposals : undefined,
 			creations: creations.length ? creations : undefined,
 			thoughts: thoughts ? thoughts : undefined,
+			reasoningSummary: reasoningText,
 		};
 	}
 
@@ -345,9 +509,10 @@ Tool outputs: ${toolContext}`;
 		}
 
 		try {
+			const ids = mcpSelection?.clientIds ?? [];
 			const selectedClients = this.plugin.mcpManager
 				.getConnectedClients()
-				.filter((client) => mcpSelection.clientIds.includes(client.id));
+				.filter((client) => ids.includes(client.id));
 
 			for (const client of selectedClients) {
 				try {
