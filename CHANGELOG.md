@@ -8,6 +8,13 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [2.0.1] - 2025-08-22
+
+### Added
+
+- First-time install wizard modal in `InstallWizard.ts` to guide users through Git repo cloning, folder naming, and user config setup.
+- Check in `main.ts` to detect if setup is needed and launch the wizard automatically.
+
 ## [2.0.0] - 2025-08-22
 
 ### Added
@@ -296,6 +303,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Export stub properly to build (`chore: export stub properly to build`)
 
 [Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v2.0.0...HEAD
+[2.0.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v2.0.1
 [2.0.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v2.0.0
 [1.5.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.4.0
