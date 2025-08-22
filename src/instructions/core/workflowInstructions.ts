@@ -14,6 +14,21 @@ export function createWorkflowInstructions(teamRoot: string): string {
 - After tools, provide ONLY a brief summary—reference files appropriately
 - Do NOT include file content in responses; tools handle operations
 
+PLANNING AND MEMORIES (INTERNAL SCRATCHPAD TOOLS):
+- Routine (do this every turn):
+  1) Before first tool call, draft a brief plan (≤5 steps) via planning_write.
+  2) After each tool batch, update progress + next step via planning_write.
+  3) On completion, append result + follow-ups via planning_write.
+- Use planning_update_section to directly edit sections (Goals, Plan, Progress, Next, Decisions).
+- Use planning_replace if you need to tidy/reshape the plan into a clean checklist.
+- Use memories_add for durable items only (see rules below). Use memories_list to recall before planning.
+- These are INTERNAL notes; do not echo raw scratchpad content unless asked.
+
+MEMORY CAPTURE RULES (WHEN TO CALL memories_add):
+- Save: persistent facts, user preferences, long-lived entities (IDs, names, URLs), decisions that affect future work.
+- Do NOT save: transient tool output, ephemeral paths, step-by-step noise, or anything already in files.
+- Format: concise one-liner; choose type = fact | preference | entity; add tags when helpful.
+
 OBSIDIAN BASES/INDEXES (.base files):
 - To create a .base file, FIRST use the 'search_base_def' tool to get the schema, THEN use 'create_base' with a .base path and full YAML content.
 - YAML must define filters, formulas, properties, and views (see schema).
