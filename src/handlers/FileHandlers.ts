@@ -79,6 +79,7 @@ export class FileHandler {
 	 * Handles file modification events
 	 */
 	private async onFileModified(file: TFile) {
+		if ((this.plugin as any).installingWizard) return;
 		if (
 			!PathUtils.isWithinTeamDocs(file.path, this.plugin.settings.teamDocsPath)
 		)
@@ -166,6 +167,7 @@ export class FileHandler {
 	 * Handles newly created files (e.g., pasted images) and moves images into the configured attachments subdirectory
 	 */
 	private async onFileCreated(file: TFile) {
+		if ((this.plugin as any).installingWizard) return;
 		const teamRoot = this.plugin.settings.teamDocsPath;
 		if (!teamRoot) return;
 
@@ -217,6 +219,7 @@ export class FileHandler {
 	 * Handles file deletion events
 	 */
 	private async onFileDeleted(file: TAbstractFile) {
+		if ((this.plugin as any).installingWizard) return;
 		new Notice("Deletion detected in Team Docs—checking reservations...");
 
 		await this.plugin.reservationManager.syncReservationsFromGit();
@@ -284,6 +287,7 @@ export class FileHandler {
 	 * Handles editor change events for pre-edit warnings
 	 */
 	private onEditorChange(editor: Editor, info: MarkdownView) {
+		if ((this.plugin as any).installingWizard) return;
 		const file = info.file;
 		if (
 			!file ||
@@ -324,6 +328,7 @@ export class FileHandler {
 	 * Automatically commits a file after modification
 	 */
 	private async autoCommitFile(file: TFile) {
+		if ((this.plugin as any).installingWizard) return;
 		if (this.processingFiles.has(file.path)) {
 			return;
 		}
