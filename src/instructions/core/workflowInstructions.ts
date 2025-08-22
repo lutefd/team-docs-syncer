@@ -15,7 +15,7 @@ export function createWorkflowInstructions(teamRoot: string): string {
 - Do NOT include file content in responses; tools handle operations
 
 PLANNING AND MEMORIES (INTERNAL SCRATCHPAD TOOLS):
-- Routine (do this every turn):
+- Routine (do this every time the task seems complex or too abstract):
   1) Before first tool call, draft a brief plan (≤5 steps) via planning_write.
   2) After each tool batch, update progress + next step via planning_write.
   3) On completion, append result + follow-ups via planning_write.
