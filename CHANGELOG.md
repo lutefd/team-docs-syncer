@@ -8,6 +8,111 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [2.0.0] - 2025-08-22
+
+### Added
+
+- **MCP (Model Context Protocol) Support**: Complete integration with MCP servers
+
+  - `MCPManager` for handling multiple MCP server connections
+  - Support for STDIO, HTTP, and SSE transport types
+  - Automatic OAuth flow detection and handling via `OAuthManager`
+  - Dynamic MCP tool integration with AI conversations
+  - MCP server configuration UI in settings
+  - Connection status monitoring and retry logic
+
+- **Advanced AI Context Management**: Intelligent conversation handling
+
+  - `ContextManager` for building context with summarization and retrieval
+  - `SummarizerService` for compacting conversation history
+  - `MemoryService` for persistent fact/preference storage
+  - `PlanningService` for automatic task planning and next steps
+  - Token estimation and context policy enforcement
+
+- **Enhanced AI Instructions System**: Modular prompt architecture
+
+  - Separate instruction modules for different modes (compose, write, chat)
+  - Provider-specific instructions (Ollama, Mistral optimizations)
+  - MCP-aware system prompts with tool prioritization
+  - Code formatting enforcement for better syntax highlighting
+
+- **Expanded Tool Capabilities**: Comprehensive document analysis tools
+
+  - `find_similar_to_doc` and `find_similar_to_many` for similarity search
+  - `search_similar` with tag and content matching
+  - `follow_links` with recursive link traversal
+  - `get_backlinks` and `get_graph_context` for document relationships
+  - `create_base` and `search_base_def` for Obsidian base files support
+  - Planning tools (`planning_write`, `planning_update_section`, `memories_add`)
+
+- **UI/UX Enhancements**: Improved chat interface and interactions
+
+  - MCP server selection modal and status indicators
+  - Enhanced message rendering with reasoning/thinking sections
+  - Placeholder states and better loading feedback
+  - Responsive design improvements for narrow viewports
+  - File attachment processing with `<attachedcontent>` tags
+
+- **Configuration Options**: Extensive customization capabilities
+  - AI scope setting (team-docs vs vault-wide operations)
+  - Context management settings (summarization, retrieval, history limits)
+  - MCP client configuration with transport options
+  - Enhanced provider settings with model-specific configurations
+
+### Changed
+
+- **Architectural Improvements**: Major code reorganization
+
+  - Moved UI components to organized folder structure (`components/`, `modals/`)
+  - Split AI tools into focused modules (`core/`, `obsidian/`, `navigation/`)
+  - Enhanced service layer with specialized managers and utilities
+  - Improved separation of concerns and modularity
+
+- **Path Handling**: Comprehensive path utility system
+
+  - `PathUtils` class for consistent path operations across team docs
+  - Support for both team-docs scoped and vault-wide operations
+  - Better Git path cleaning for multi-user repositories
+  - Improved relative/absolute path conversions
+
+- **Chat Session Management**: Enhanced conversation persistence
+
+  - Automatic context compaction with conversation summarization
+  - Session-specific scratchpads and memory storage
+  - Better message history management with token-aware truncation
+  - Improved pin management and file attachment handling
+
+- **File Operations**: Better reservation and conflict handling
+  - Enhanced reservation path handling with relative path storage
+  - Improved Git commit message formatting for better parsing
+  - Better error handling for file operations outside team docs scope
+  - Enhanced activity feed with cleaner path display
+
+### Dependencies
+
+- Added `@modelcontextprotocol/sdk` ^1.17.3 for MCP server integration
+- Updated various AI SDK dependencies for better provider support
+
+### Technical Improvements
+
+- **Performance**: Better caching and debounced operations
+- **Error Handling**: Comprehensive error recovery and user feedback
+- **Type Safety**: Enhanced TypeScript definitions and interfaces
+- **Testing**: Updated test structures for new architecture
+
+### Bug Fixes
+
+- Fixed GPG signing issues in Git operations with fallback to `--no-gpg-sign`
+- Improved file path resolution for mentions and cross-references
+- Better handling of OAuth flows and permission errors
+- Enhanced error messages for MCP server connection issues
+
+### Breaking Changes
+
+- Settings structure has been expanded with new sections for MCP and context management
+- Some internal APIs have changed due to architectural improvements
+- File path handling has been centralized through `PathUtils`
+
 ## [1.5.0] - 2025-08-15
 
 ### Added
@@ -190,7 +295,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Initial setup (`chore: initial setup`)
 - Export stub properly to build (`chore: export stub properly to build`)
 
-[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/lutefd/team-docs-syncer/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v2.0.0
 [1.5.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.5.0
 [1.4.0]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.4.0
 [1.1.1]: https://github.com/lutefd/team-docs-syncer/releases/tag/v1.1.1
