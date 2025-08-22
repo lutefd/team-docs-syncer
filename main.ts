@@ -17,6 +17,9 @@ import { ChatSessionService } from "./src/services/ChatSessionService";
 import { CHATBOT_VIEW, ChatbotView } from "./src/ui/ChatbotView";
 import { MCPManager } from "./src/managers/MCPManager";
 import { PathUtils } from "./src/utils/PathUtils";
+import { InstallWizard } from "./src/ui/modals/InstallWizard";
+import * as fs from "fs";
+import * as path from "path";
 
 /**
  * Main plugin class for Team Docs Git Sync functionality
@@ -48,13 +51,17 @@ export default class TeamDocsPlugin extends Plugin {
 
 		this.addSettingTab(new TeamDocsSettingTab(this.app, this));
 
-		if (this.settings.autoSyncOnStartup) {
-			setTimeout(() => this.gitService.syncTeamDocs(), 2000);
-		}
+		if (await this.needsFirstTimeSetup()) {
+			setTimeout(() => new InstallWizard(this.app, this).open(), 500);
+		} else {
+			if (this.settings.autoSyncOnStartup) {
+				setTimeout(() => this.gitService.syncTeamDocs(), 2000);
+			}
 
-		setTimeout(() => {
-			this.reservationManager.syncReservationsFromGit();
-		}, 3000);
+			setTimeout(() => {
+				this.reservationManager.syncReservationsFromGit();
+			}, 3000);
+		}
 
 		setTimeout(async () => {
 			await this.mcpManager.initialize();
@@ -177,6 +184,23 @@ export default class TeamDocsPlugin extends Plugin {
 				() => this.gitService.syncTeamDocs(),
 				this.settings.autoSyncInterval * 60 * 1000
 			);
+		}
+	}
+
+	private async needsFirstTimeSetup(): Promise<boolean> {
+		try {
+			if (!this.settings.gitRemoteUrl || !this.settings.gitRemoteUrl.trim()) {
+				return true;
+			}
+
+			const absPath = await this.gitService.getTeamDocsPath();
+			if (!absPath) return true;
+			if (!fs.existsSync(absPath)) return true;
+			const gitDir = path.join(absPath, ".git");
+			if (!fs.existsSync(gitDir)) return true;
+			return false;
+		} catch {
+			return true;
 		}
 	}
 }
