@@ -8,6 +8,12 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - Nothing yet.
 
+## [2.0.2] - 2025-08-22
+
+### Bug Fixes
+
+- Install wizard modal triggering reservations on initial clone.
+
 ## [2.0.1] - 2025-08-22
 
 ### Added
