@@ -18,6 +18,13 @@ export interface TeamDocsSettings {
 
 	aiScope: "team-docs" | "vault-wide";
 
+	context?: {
+		summarizeOverTokens: number;
+		historyMaxMessages: number;
+		retrieval: { enableVault: boolean; k: number; snippetLength: number };
+		includeMCPOverview: boolean;
+	};
+
 	openaiApiKey?: string;
 	openaiModel?: string;
 	openaiTemperature: number;
@@ -65,6 +72,13 @@ export const DEFAULT_SETTINGS: TeamDocsSettings = {
 	mcpClients: [],
 
 	aiScope: "team-docs",
+
+	context: {
+		summarizeOverTokens: 32000,
+		historyMaxMessages: 20,
+		retrieval: { enableVault: true, k: 5, snippetLength: 800 },
+		includeMCPOverview: true,
+	},
 
 	// Legacy settings (for migration)
 	openaiApiKey: "",
