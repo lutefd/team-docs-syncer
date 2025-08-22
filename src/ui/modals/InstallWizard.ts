@@ -24,10 +24,12 @@ export class InstallWizard extends Modal {
 
 	onOpen(): void {
 		this.titleEl.setText("Team Docs – First-time Setup");
+		this.plugin.installingWizard = true;
 		this.render();
 	}
 
 	onClose(): void {
+		this.plugin.installingWizard = false;
 		this.contentEl.empty();
 	}
 
@@ -235,7 +237,10 @@ export class InstallWizard extends Modal {
 		});
 		const closeBtn = el.createEl("button", { text: "Close" });
 		closeBtn.style.marginTop = "12px";
-		closeBtn.onclick = () => this.close();
+		closeBtn.onclick = () => {
+			this.plugin.installingWizard = false;
+			this.close();
+		};
 	}
 
 	private inferRepoName(url: string): string {
