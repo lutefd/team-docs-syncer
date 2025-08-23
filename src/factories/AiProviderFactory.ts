@@ -240,7 +240,7 @@ export class AiProviderFactory {
 	}
 
 	private createOllamaModel(modelId: string): LanguageModel {
-		const { createOllama } = require("./OllamaProvider");
+		const { createOllama } = require("../services/OllamaProvider");
 		const ollamaProvider = createOllama({
 			baseURL: this.settings.ai.ollamaBaseUrl || "http://localhost:11434",
 		});

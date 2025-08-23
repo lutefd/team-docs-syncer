@@ -15,7 +15,7 @@ import { AiService } from "./src/services/AiService";
 import { MarkdownIndexService } from "./src/services/MarkdownIndexService";
 import { ChatSessionService } from "./src/services/ChatSessionService";
 import { CHATBOT_VIEW, ChatbotView } from "./src/ui/ChatbotView";
-import { MCPManager } from "./src/managers/MCPManager";
+import { MCPService } from "./src/services/MCPService";
 import { PathUtils } from "./src/utils/PathUtils";
 import { InstallWizard } from "./src/ui/modals/InstallWizard";
 import * as fs from "fs";
@@ -35,7 +35,7 @@ export default class TeamDocsPlugin extends Plugin {
 	aiService: AiService;
 	markdownIndexService: MarkdownIndexService;
 	chatSessionService: ChatSessionService;
-	mcpManager: MCPManager;
+	mcpManager: MCPService;
 	private syncInterval: ReturnType<typeof setInterval> | null = null;
 	public installingWizard: boolean = false;
 	public syncing: boolean = false;
@@ -154,7 +154,7 @@ export default class TeamDocsPlugin extends Plugin {
 		this.aiService = new AiService(this);
 		this.markdownIndexService = new MarkdownIndexService(this.app, this);
 		this.chatSessionService = new ChatSessionService(this);
-		this.mcpManager = new MCPManager(this);
+		this.mcpManager = new MCPService(this);
 
 		this.addChild(this.reservationManager);
 		this.addChild(this.statusIndicator);

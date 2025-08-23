@@ -13,7 +13,7 @@ interface OAuthFlow {
 /**
  * Manager for handling OAuth authentication flows for MCP servers
  */
-export class OAuthManager {
+export class OAuthService {
 	private activeFlows: Map<string, OAuthFlow> = new Map();
 	private readonly flowTimeout = 300000;
 

@@ -271,7 +271,7 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 		});
 
 		const mcpContainer = containerEl.createDiv();
-		mcpContainer.addClass("mcp-clients-container");
+		this.safeAddClass(mcpContainer, "mcp-clients-container");
 
 		this.renderMCPClients(mcpContainer);
 
@@ -302,7 +302,7 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 		index: number
 	) {
 		const clientContainer = container.createDiv();
-		clientContainer.addClass("mcp-client-container");
+		this.safeAddClass(clientContainer, "mcp-client-container");
 		clientContainer.style.border =
 			"1px solid var(--background-modifier-border)";
 		clientContainer.style.borderRadius = "8px";
@@ -322,7 +322,7 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 		titleEl.style.margin = "0";
 
 		const deleteButton = headerDiv.createEl("button", { text: "Delete" });
-		deleteButton.addClass("mod-warning");
+		this.safeAddClass(deleteButton, "mod-warning");
 		deleteButton.style.fontSize = "12px";
 		deleteButton.style.padding = "4px 8px";
 		deleteButton.onclick = () => {
@@ -404,8 +404,8 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 								await this.plugin.saveSettings();
 							})
 					);
-				commandSetting.settingEl.addClass("transport-field");
-				commandSetting.settingEl.addClass("transport-field-command");
+				this.safeAddClass(commandSetting.settingEl, "transport-field");
+				this.safeAddClass(commandSetting.settingEl, "transport-field-command");
 
 				const argsSetting = new Setting(container)
 					.setName("Arguments")
@@ -419,8 +419,8 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 								await this.plugin.saveSettings();
 							})
 					);
-				argsSetting.settingEl.addClass("transport-field");
-				argsSetting.settingEl.addClass("transport-field-args");
+				this.safeAddClass(argsSetting.settingEl, "transport-field");
+				this.safeAddClass(argsSetting.settingEl, "transport-field-args");
 				break;
 
 			case MCP_TRANSPORT_TYPE.HTTP:
@@ -437,9 +437,23 @@ export class TeamDocsSettingTab extends PluginSettingTab {
 								await this.plugin.saveSettings();
 							})
 					);
-				urlSetting.settingEl.addClass("transport-field");
-				urlSetting.settingEl.addClass("transport-field-url");
+				this.safeAddClass(urlSetting.settingEl, "transport-field");
+				this.safeAddClass(urlSetting.settingEl, "transport-field-url");
 				break;
+		}
+	}
+
+	/**
+	 * Safely add a CSS class to an element in both Obsidian and Jest DOM.
+	 */
+	private safeAddClass(el: any, className: string) {
+		if (!el) return;
+		if (typeof el.addClass === "function") {
+			el.addClass(className);
+			return;
+		}
+		if (el.classList && typeof el.classList.add === "function") {
+			el.classList.add(className);
 		}
 	}
 

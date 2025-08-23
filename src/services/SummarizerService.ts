@@ -1,7 +1,7 @@
 import type TeamDocsPlugin from "../../main";
 import type { ModelMessage } from "ai";
 import { generateText } from "ai";
-import { AiProviderFactory } from "./AiProviderFactory";
+import { AiProviderFactory } from "../factories/AiProviderFactory";
 import { AiProvider } from "../types/AiProvider";
 
 export class SummarizerService {

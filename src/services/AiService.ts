@@ -2,7 +2,7 @@ import TeamDocsPlugin from "../../main";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText, type ModelMessage } from "ai";
 import { buildTools } from "../tools";
-import { AiProviderFactory } from "./AiProviderFactory";
+import { AiProviderFactory } from "../factories/AiProviderFactory";
 import { AiProvider } from "../types/AiProvider";
 import { MCPSelection } from "../ui/components/MCPChooser";
 import {

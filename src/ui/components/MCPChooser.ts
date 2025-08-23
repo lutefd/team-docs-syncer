@@ -1,6 +1,6 @@
 import { Component } from "obsidian";
 import { MCPClientConfig } from "../../types/Settings";
-import { MCPManager } from "../../managers/MCPManager";
+import { MCPService } from "../../services/MCPService";
 import TeamDocsPlugin from "../../../main";
 
 export interface MCPSelection {
