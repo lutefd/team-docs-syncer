@@ -162,6 +162,14 @@ export class MentionHandler extends Component {
 			return;
 		}
 
+		const prevChar =
+			lastAtIndex > 0 ? textBeforeCursor.charAt(lastAtIndex - 1) : "";
+		const validTrigger = lastAtIndex === 0 || prevChar === " ";
+		if (!validTrigger) {
+			this.hideMentionMenu();
+			return;
+		}
+
 		const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
 		if (textAfterAt.includes(" ")) {
 			this.hideMentionMenu();
