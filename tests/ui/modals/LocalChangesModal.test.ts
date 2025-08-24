@@ -1,7 +1,7 @@
 /** @jest-environment jsdom */
 import { App } from "obsidian";
-import { LocalChangesModal } from "../../src/ui/modals/LocalChangesModal";
-import { createMockApp } from "../helpers/mockPlugin";
+import { LocalChangesModal } from "../../../src/ui/modals/LocalChangesModal";
+import { createMockApp } from "../../helpers/mockPlugin";
 
 describe("LocalChangesModal", () => {
 	let app: App;
