@@ -37,6 +37,9 @@ export function createMockPlugin(app: App) {
 		restoreFileFromGit: jest.fn(),
 		getTeamDocsPath: jest.fn(async () => "/abs/teamdocs"),
 		gitCommand: jest.fn(async () => ({ stdout: "", stderr: "" })),
+		gitCommandRetry: jest.fn(async (cwd: string, command: string) => {
+			return (gitService.gitCommand as any)(cwd, command);
+		}),
 		isRemoteReachable: jest.fn(async () => true),
 	};
 
@@ -70,6 +73,15 @@ export function createMockPlugin(app: App) {
 			userEmail: "me@example.com",
 			autoSyncOnStartup: false,
 			autoSyncInterval: 0,
+			ai: {
+				openaiApiKey: "",
+				anthropicApiKey: "",
+				googleApiKey: "",
+				ollamaBaseUrl: "http://localhost:11434",
+				ollamaComposeModels: [],
+				ollamaChatModels: [],
+			},
+			mcpClients: [],
 		},
 		saveSettings: jest.fn(async () => {}),
 		addRibbonIcon: jest.fn(),
@@ -105,6 +117,7 @@ export function createMockPlugin(app: App) {
 		reservationManager,
 		uiManager,
 		statusIndicator,
+		mcpManager: { refreshClients: jest.fn(async () => {}) },
 	};
 	return plugin;
 }
