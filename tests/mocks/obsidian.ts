@@ -3,6 +3,16 @@ export class TAbstractFile {
 	constructor(path: string) {
 		this.path = path;
 	}
+
+	MarkdownRenderer = {
+		render: jest.fn(async (_app: any, md: string, el: HTMLElement) => {
+			if (typeof document !== "undefined") {
+				const p = document.createElement("p");
+				p.textContent = md;
+				el.appendChild(p);
+			}
+		}),
+	};
 }
 
 export class TFile extends TAbstractFile {}
@@ -44,7 +54,11 @@ export class Component {
 		this.intervals.push(id);
 		return id;
 	}
+	addChild(_child: any) {}
 	onunload() {}
+	unload() {
+		this.destroy();
+	}
 	destroy() {
 		for (const id of this.intervals) {
 			try {
@@ -66,6 +80,7 @@ export class Notice {
 
 export class Modal {
 	app: App;
+	modalEl: HTMLElement;
 	contentEl: HTMLElement;
 	titleEl: { setText: (t: string) => void };
 	constructor(app: App) {
@@ -83,17 +98,24 @@ export class Modal {
 				const child = document.createElement(tag);
 				if (opts?.text) child.textContent = opts.text;
 				if (opts?.cls) child.className = opts.cls;
+				if (opts?.type) (child as any).type = opts.type;
+				if (opts?.attr) {
+					for (const [k, v] of Object.entries(opts.attr))
+						(child as any).setAttribute(k, String(v));
+				}
 				this.appendChild(child);
 				return child;
 			};
-			el.createDiv = function (cls?: string) {
+			el.createDiv = function (arg?: string | { cls?: string }) {
 				if (typeof document === "undefined") return {} as any;
 				const child = document.createElement("div");
-				if (cls) child.className = cls;
+				if (typeof arg === "string") child.className = arg;
+				else if (arg && (arg as any).cls) child.className = (arg as any).cls;
 				this.appendChild(child);
 				return child;
 			};
 		}
+		this.modalEl = el as any;
 		this.contentEl = el as any;
 		this.titleEl = { setText: (_: string) => {} };
 	}
@@ -108,6 +130,18 @@ export class Modal {
 export interface Editor {}
 export class MarkdownView {}
 
+export const MarkdownRenderer = {
+	async render(
+		_app: App,
+		markdown: string,
+		el: HTMLElement,
+		_path: string,
+		_component: Component
+	): Promise<void> {
+		(el as any).textContent = markdown;
+	},
+};
+
 export class FileSystemAdapter {}
 
 export function normalizePath(p: string) {
@@ -115,20 +149,21 @@ export function normalizePath(p: string) {
 }
 
 export class WorkspaceLeaf {}
-export class ItemView {
-	containerEl: any = {
-		children: [
-			null,
-			{
-				empty: () => {},
-				addClass: () => {},
-				createEl: () => ({ onclick: null }),
-			},
-		],
-	};
-	constructor(public leaf?: WorkspaceLeaf) {}
-	onOpen(): Promise<void> | void {}
-	onClose(): Promise<void> | void {}
+export class ItemView extends Component {
+    app: App;
+    containerEl: any = {
+        children: [
+            null,
+            {
+                empty: () => {},
+                addClass: () => {},
+                createEl: () => ({ onclick: null }),
+            },
+        ],
+    };
+    constructor(public leaf?: WorkspaceLeaf) { super(); this.app = ((globalThis as any).__app as App) ?? new App(); }
+    onOpen(): Promise<void> | void {}
+    onClose(): Promise<void> | void {}
 }
 
 export class PluginSettingTab {
@@ -148,6 +183,7 @@ export class PluginSettingTab {
 
 export class Setting {
 	settingEl: HTMLElement;
+	controlEl: HTMLElement;
 	constructor(containerEl: HTMLElement) {
 		this.settingEl = (
 			typeof document !== "undefined"
@@ -158,6 +194,12 @@ export class Setting {
 			(this.settingEl as any).classList = { add: () => {} } as any;
 		}
 		(containerEl as any)?.appendChild?.(this.settingEl);
+		this.controlEl = (
+			typeof document !== "undefined"
+				? document.createElement("div")
+				: ({} as any)
+		) as any;
+		(containerEl as any)?.appendChild?.(this.controlEl);
 	}
 	setName(_name: string) {
 		return this;
@@ -175,6 +217,7 @@ export class Setting {
 			this.settingEl.appendChild(input as any);
 		}
 		const api: any = {
+			inputEl: input,
 			setPlaceholder: (p?: string) => {
 				if (input && p) (input as any).placeholder = p;
 				return {
@@ -237,6 +280,7 @@ export class Setting {
 			this.settingEl.appendChild(select as any);
 		}
 		const api: any = {
+			selectEl: select,
 			addOption: (value: string, label: string) => {
 				if (select) {
 					const opt = document.createElement("option");
