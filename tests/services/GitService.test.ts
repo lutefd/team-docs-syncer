@@ -3,9 +3,9 @@ import { createMockApp, createMockPlugin } from "../helpers/mockPlugin";
 import { GitService } from "../../src/services/GitService";
 
 jest.mock("child_process", () => ({
-    exec: jest.fn((cmd: string, opts: any, cb: any) =>
-        cb(null, { stdout: "ok", stderr: "" })
-    ),
+	exec: jest.fn((cmd: string, opts: any, cb: any) =>
+		cb(null, { stdout: "ok", stderr: "" })
+	),
 }));
 
 describe("GitService", () => {
@@ -64,7 +64,7 @@ describe("GitService", () => {
 
 		const child = require("child_process");
 		const original = child.exec;
-		(child.exec as jest.Mock).mockImplementationOnce(
+		(child.exec as jest.Mock).mockImplementation(
 			(cmd: string, opts: any, cb: any) => {
 				cb(new Error("network error"), { stdout: "", stderr: "" });
 			}
