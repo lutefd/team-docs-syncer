@@ -147,7 +147,18 @@ export class PluginSettingTab {
 }
 
 export class Setting {
-	constructor(_containerEl: HTMLElement) {}
+	settingEl: HTMLElement;
+	constructor(containerEl: HTMLElement) {
+		this.settingEl = (
+			typeof document !== "undefined"
+				? document.createElement("div")
+				: ({} as any)
+		) as any;
+		if (!(this.settingEl as any).classList) {
+			(this.settingEl as any).classList = { add: () => {} } as any;
+		}
+		(containerEl as any)?.appendChild?.(this.settingEl);
+	}
 	setName(_name: string) {
 		return this;
 	}
@@ -155,13 +166,120 @@ export class Setting {
 		return this;
 	}
 	addText(cb: (t: any) => any) {
-		cb({
-			setPlaceholder: () => ({ setValue: () => ({ onChange: () => {} }) }),
-		});
+		const input =
+			typeof document !== "undefined"
+				? document.createElement("input")
+				: ({} as any);
+		if (input) {
+			(input as any).type = "text";
+			this.settingEl.appendChild(input as any);
+		}
+		const api: any = {
+			setPlaceholder: (p?: string) => {
+				if (input && p) (input as any).placeholder = p;
+				return {
+					setValue: (v?: string) => {
+						if (input && typeof v !== "undefined") (input as any).value = v;
+						return {
+							onChange: (fn: (v: string) => any) => {
+								if (
+									input &&
+									typeof (input as any).addEventListener === "function"
+								) {
+									(input as any).addEventListener("input", (e: any) =>
+										fn(e.target.value)
+									);
+								}
+							},
+						};
+					},
+				};
+			},
+		};
+		cb(api);
 		return this;
 	}
 	addToggle(cb: (t: any) => any) {
-		cb({ setValue: () => ({ onChange: () => {} }) });
+		const checkbox =
+			typeof document !== "undefined"
+				? document.createElement("input")
+				: ({} as any);
+		if (checkbox) {
+			(checkbox as any).type = "checkbox";
+			this.settingEl.appendChild(checkbox as any);
+		}
+		const api: any = {
+			setValue: (v?: boolean) => {
+				if (checkbox && typeof v !== "undefined") (checkbox as any).checked = v;
+				return {
+					onChange: (fn: (v: boolean) => any) => {
+						if (
+							checkbox &&
+							typeof (checkbox as any).addEventListener === "function"
+						) {
+							(checkbox as any).addEventListener("change", (e: any) =>
+								fn(!!e.target.checked)
+							);
+						}
+					},
+				};
+			},
+		};
+		cb(api);
+		return this;
+	}
+	addDropdown(cb: (t: any) => any) {
+		const select =
+			typeof document !== "undefined"
+				? document.createElement("select")
+				: ({} as any);
+		if (select) {
+			this.settingEl.appendChild(select as any);
+		}
+		const api: any = {
+			addOption: (value: string, label: string) => {
+				if (select) {
+					const opt = document.createElement("option");
+					opt.value = value;
+					opt.textContent = label;
+					(select as any).appendChild(opt);
+				}
+				return api;
+			},
+			setValue: (v: string) => {
+				if (select) (select as any).value = v;
+				return api;
+			},
+			onChange: (fn: (v: string) => any) => {
+				if (select && typeof (select as any).addEventListener === "function") {
+					(select as any).addEventListener("change", (e: any) =>
+						fn(e.target.value)
+					);
+				}
+				return api;
+			},
+		};
+		cb(api);
+		return this;
+	}
+	addButton(cb: (t: any) => any) {
+		const btn =
+			typeof document !== "undefined"
+				? document.createElement("button")
+				: ({} as any);
+		if (btn) this.settingEl.appendChild(btn as any);
+		const api: any = {
+			setButtonText: (t: string) => {
+				if (btn) (btn as any).textContent = t;
+				return api;
+			},
+			setCta: () => api,
+			onClick: (fn: () => any) => {
+				if (btn) (btn as any).onclick = fn;
+				return api;
+			},
+		};
+		cb(api);
 		return this;
 	}
 }
