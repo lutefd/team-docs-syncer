@@ -106,11 +106,10 @@ describe("SummarizerService", () => {
 
 	test("auto-picks from availableProviders using lastForP match or first model", async () => {
 		const svc = new SummarizerService(plugin);
-		// lastUsedProvider present but invalid key forces fallback path
 		plugin.settings.ai.lastUsedProvider = AiProvider.GOOGLE;
 		plugin.settings.ai.lastUsedModels = { [AiProvider.OPENAI]: "gpt-y" } as any;
 
-		factory.hasValidApiKey.mockReturnValue(false); // ensure lastUsed invalid
+		factory.hasValidApiKey.mockReturnValue(false);
 		factory.getAvailableProviders.mockReturnValueOnce([
 			{
 				provider: AiProvider.OPENAI,

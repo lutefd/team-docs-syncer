@@ -32,13 +32,11 @@ describe("MCPConnectionService", () => {
 		jest.useFakeTimers();
 		jest.clearAllMocks();
 		jest.resetModules();
-		// re-require after mocks
 		const {
 			MCPConnectionService,
 		} = require("../../src/services/MCPConnectionService");
 		svc = new MCPConnectionService();
 
-		// default mocks
 		createTransportMock.mockImplementation(async () => makeTransport());
 		createMCPClientMock.mockImplementation(async ({ transport }: any) => ({
 			tools: jest.fn(async () => {}),
