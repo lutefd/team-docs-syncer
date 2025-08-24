@@ -16,6 +16,91 @@ describe("FileHandler", () => {
 		handler.registerEventHandlers();
 	});
 
+	test("autoCommitFile does nothing for files outside team docs", async () => {
+		const file = new (TFile as any)("Outside/note.md") as TFile;
+		await (handler as any).autoCommitFile(file);
+		expect(plugin.gitService.gitCommand).not.toHaveBeenCalled();
+	});
+
+	test("onFileModified unreserved online attempts reserve, retries after sync, then succeeds", async () => {
+		const file = new (TFile as any)("Team/Docs/retry.md") as TFile;
+		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(true);
+		(plugin.reservationManager.getFileReservation as jest.Mock)
+			.mockReturnValueOnce(null)
+			.mockReturnValueOnce(null)
+			.mockReturnValueOnce({
+				userName: plugin.settings.userName,
+				expiresAt: Date.now() + 10 * 60 * 1000,
+			});
+		(plugin.reservationManager.reserveFile as jest.Mock)
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(true);
+
+		await (handler as any)["onFileModified"](file);
+
+		expect(
+			plugin.reservationManager.syncReservationsFromGit
+		).toHaveBeenCalled();
+		expect(plugin.reservationManager.reserveFile).toHaveBeenCalledTimes(2);
+		expect(plugin.gitService.restoreFileFromGit).not.toHaveBeenCalled();
+	});
+
+	test("onFileModified with own reservation near expiry triggers extend", async () => {
+		const file = new (TFile as any)("Team/Docs/near.md") as TFile;
+		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(true);
+		const exp = Date.now() + 2 * 60 * 1000;
+		(plugin.reservationManager.getFileReservation as jest.Mock).mockReturnValue(
+			{
+				userName: plugin.settings.userName,
+				expiresAt: exp,
+			}
+		);
+		await (handler as any)["onFileModified"](file);
+		expect(plugin.reservationManager.extendReservation).toHaveBeenCalledWith(
+			file
+		);
+	});
+
+	test("onFileCreated ignores non-image files", async () => {
+		const active = new (TFile as any)("Team/Docs/page.md") as TFile;
+		(app as any).workspace.getActiveFile = jest.fn(() => active);
+		const txt = new (TFile as any)("tmp.txt") as TFile;
+		(txt as any).name = "tmp.txt";
+		await (app as any).vault.emit("create", txt);
+		expect((app as any).vault.createFolder).not.toHaveBeenCalled();
+		expect((app as any).fileManager.renameFile).not.toHaveBeenCalled();
+	});
+
+	test("onFileCreated no-op when already in attachments subdir", async () => {
+		const active = new (TFile as any)("Team/Docs/page.md") as TFile;
+		(app as any).workspace.getActiveFile = jest.fn(() => active);
+		const img = new (TFile as any)("Team/Docs/assets/exist.png") as TFile;
+		(img as any).name = "exist.png";
+		await (app as any).vault.emit("create", img);
+		expect((app as any).fileManager.renameFile).not.toHaveBeenCalled();
+	});
+
+	test("onFileCreated ensures unique filename on clash", async () => {
+		const active = new (TFile as any)("Team/Docs/page.md") as TFile;
+		(app as any).workspace.getActiveFile = jest.fn(() => active);
+		(app as any).vault.getAbstractFileByPath = jest
+			.fn()
+			.mockReturnValueOnce(null);
+		const img = new (TFile as any)("tmp.png") as TFile;
+		(img as any).name = "tmp.png";
+		(app as any).vault.getAbstractFileByPath
+			.mockReturnValueOnce(true)
+			.mockReturnValueOnce(null);
+
+		await (app as any).vault.emit("create", img);
+		expect((app as any).vault.createFolder).toHaveBeenCalledWith(
+			"Team/Docs/assets"
+		);
+		expect((app as any).fileManager.renameFile).toHaveBeenCalledWith(
+			img,
+			"Team/Docs/assets/tmp_1.png"
+		);
+	});
 	test("autoCommitFile adds and commits when own reservation is active", async () => {
 		const file = new (TFile as any)("Team/Docs/note.md") as TFile;
 		const now = Date.now();
@@ -51,10 +136,7 @@ describe("FileHandler", () => {
 		);
 		(plugin.gitService.isRemoteReachable as jest.Mock).mockResolvedValue(true);
 
-		(app as any).vault.emit("modify", file);
-		await Promise.resolve();
-		await Promise.resolve();
-		jest.runOnlyPendingTimers();
+		await (handler as any)["onFileModified"](file);
 
 		expect(plugin.gitService.restoreFileFromGit).toHaveBeenCalledWith(
 			file.path
