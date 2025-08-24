@@ -1,6 +1,5 @@
-import { Modal, Setting } from "obsidian";
+import { Modal } from "obsidian";
 import TeamDocsPlugin from "../../../main";
-import { MCPClientConfig } from "../../types/Settings";
 
 export interface MCPSelection {
 	clientIds: string[];
