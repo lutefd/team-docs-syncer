@@ -1,4 +1,4 @@
-import { Component, MarkdownRenderer, TFile } from "obsidian";
+import { Component, MarkdownRenderer } from "obsidian";
 import type { ModelMessage } from "ai";
 import TeamDocsPlugin from "../../../main";
 import { LinkHandler } from "./LinkHandler";

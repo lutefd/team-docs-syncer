@@ -1,8 +1,7 @@
 import { Component } from "obsidian";
 import TeamDocsPlugin from "../../../main";
 import { MentionHandler } from "./MentionHandler";
-import { LinkHandler } from "./LinkHandler";
-import { MCPModal, MCPSelection } from "./MCPModal";
+import { MCPModal, MCPSelection } from "../modals/MCPModal";
 import { ProviderChooser, ProviderSelection } from "./ProviderChooser";
 
 export interface ChatInputOptions {

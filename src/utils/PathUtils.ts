@@ -1,5 +1,3 @@
-import TeamDocsPlugin from "main";
-
 /**
  * Utility functions for handling file paths in team docs syncing
  */

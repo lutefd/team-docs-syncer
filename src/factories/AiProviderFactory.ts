@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { LanguageModel, generateText } from "ai";
+import { LanguageModel } from "ai";
 import { AiProvider, ModelConfig, ProviderConfig } from "../types/AiProvider";
 
 import { TeamDocsSettings } from "../types/Settings";
